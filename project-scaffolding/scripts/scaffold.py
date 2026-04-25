@@ -119,6 +119,10 @@ class ProjectScaffolder:
             "go-chi": self._create_go_api,
             "go-cli": self._create_go_cli,
             "go-module": self._create_go_module,
+            # Ansible
+            "ansible": self._create_ansible,
+            "ansible-role": self._create_ansible_role,
+            "ansible-docker-container": self._create_ansible_container,
             # Web (CLI-delegated)
             "react": self._create_react,
             "astro": self._create_astro,
@@ -332,6 +336,29 @@ npm-debug.log*
             ])
 
         return "\n".join(lines) + "\n"
+
+    def _ansible_claude_md(self, config: ProjectConfig) -> str:
+        """Generate CLAUDE.md for Ansible projects."""
+        return f"""# {config.name}
+
+{config.description or 'Ansible project.'}
+
+## Development
+
+```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+```
+"""
 
     def _license_mit(self, config: ProjectConfig) -> str:
         return f"""MIT License
@@ -1207,6 +1234,463 @@ lint:
         self._go_common_files(path, config)
 
     # =====================================================================
+    # Ansible: Full playbook project
+    # =====================================================================
+
+    def _create_ansible(self, path: Path, config: ProjectConfig) -> None:
+        """Create a full Ansible playbook project."""
+        self._create_dirs(path, [
+            "roles",
+            "group_vars/all",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+# Add target hosts here.
+#
+# all:
+#   children:
+#     servers:
+#       hosts:
+#         server-01:
+#           ansible_host: 192.168.1.10
+#           ansible_user: deploy
+
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or config.name}
+  hosts: all
+  gather_facts: true
+
+  roles: []
+    # - role: my_role
+    #   tags: my_role
+""")
+
+        self._write_file(path / "group_vars/all/main.yml", """---
+# Global variables for all hosts
+# app_name: my-app
+""")
+
+        self._write_file(path / "requirements.yml", """---
+# Ansible Galaxy roles and collections
+# Install with: ansible-galaxy install -r requirements.yml
+
+roles: []
+
+collections:
+  - name: community.general
+  - name: community.docker
+""")
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\nansible-galaxy install -r requirements.yml\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
+    # Ansible: Reusable role (Galaxy-style)
+    # =====================================================================
+
+    def _create_ansible_role(self, path: Path, config: ProjectConfig) -> None:
+        """Create a standalone Ansible role with playbook wrapper."""
+        role_name = config.name.replace("-", "_")
+
+        self._create_dirs(path, [
+            f"roles/{role_name}/tasks",
+            f"roles/{role_name}/defaults",
+            f"roles/{role_name}/handlers",
+            f"roles/{role_name}/templates",
+            f"roles/{role_name}/files",
+            "group_vars",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or config.name}
+  hosts: all
+  gather_facts: true
+  tags: [{role_name}]
+
+  roles:
+    - role: {role_name}
+""")
+
+        self._write_file(
+            path / f"roles/{role_name}/defaults/main.yml",
+            f"""---
+# {role_name} role defaults
+# Override per-host in host_vars/ or per-group in group_vars/.
+""",
+        )
+
+        self._write_file(
+            path / f"roles/{role_name}/tasks/main.yml",
+            f"""---
+# {role_name} — main task dispatcher
+
+- name: Placeholder task
+  ansible.builtin.debug:
+    msg: "{role_name} role is running on {{{{ inventory_hostname }}}}"
+""",
+        )
+
+        self._write_file(
+            path / f"roles/{role_name}/handlers/main.yml",
+            """---
+# Handlers — triggered by notify in tasks
+# - name: Restart service
+#   ansible.builtin.service:
+#     name: my-service
+#     state: restarted
+""",
+        )
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\n# No external dependencies\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+ansible-playbook playbook.yml -i inventory.yml --limit server-01
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
+    # Ansible: Docker container deployment structure
+    # =====================================================================
+
+    def _create_ansible_container(self, path: Path, config: ProjectConfig) -> None:
+        """Create the skeleton for a tag-based Docker container Ansible role.
+
+        Generates the dockers role structure matching common/deploy.yml contract.
+        The CLI wizard then fills in container-specific content.
+        """
+        self._create_dirs(path, [
+            "roles/dockers/tasks/common",
+            "roles/dockers/tasks/containers",
+            "roles/dockers/files",
+            "roles/dockers/defaults",
+            "roles/dockers/vars",
+            "roles/dockers/templates",
+            "group_vars/all",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or 'Deploy Docker containers'}
+  hosts: all
+  gather_facts: true
+
+  roles:
+    - role: dockers
+      become: true
+      tags: dockers
+""")
+
+        self._write_file(path / "roles/dockers/defaults/main.yml", """---
+# dockers role defaults
+""")
+
+        self._write_file(path / "roles/dockers/vars/main.yml", f"""---
+# Container deployment configuration
+dockers_path: /opt/docker
+dockers_lan_name: "{config.name}-networks"
+dockers_domain_name: "example.com"
+dockers_admin_email: "admin@example.com"
+
+# Container list — add entries as you scaffold containers
+dockers_containers: []
+""")
+
+        # Shared deploy logic matching the production contract
+        self._write_file(path / "roles/dockers/tasks/common/deploy.yml", """---
+# Shared container deploy logic. Called via import_tasks from each
+# containers/<name>.yml.
+#
+# Required vars:
+#   container_name           (str)  — directory name under files/
+#
+# Optional vars:
+#   container_has_env        (bool) — template .env file (default: false)
+#   container_extra_dirs     (list of str)  — additional directories
+#   container_extra_files    (list of {src, dest, mode}) — static files
+#   container_extra_templates (list of {src, dest, mode}) — Jinja templates
+
+- name: "{{ container_name }} | Create container directory"
+  ansible.builtin.file:
+    path: "{{ dockers_path }}/{{ container_name }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0775'
+
+- name: "{{ container_name }} | Create extra directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0775'
+  loop: "{{ container_extra_dirs | default([]) }}"
+
+- name: "{{ container_name }} | Template .env"
+  ansible.builtin.template:
+    src: "./files/{{ container_name }}/.env.j2"
+    dest: "{{ dockers_path }}/{{ container_name }}/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  when: container_has_env | default(false)
+  no_log: true
+
+- name: "{{ container_name }} | Template compose.yml"
+  ansible.builtin.template:
+    src: "./files/{{ container_name }}/compose.j2"
+    dest: "{{ dockers_path }}/{{ container_name }}/compose.yml"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0664'
+
+- name: "{{ container_name }} | Copy extra files"
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: "{{ item.mode | default('0660') }}"
+  loop: "{{ container_extra_files | default([]) }}"
+  no_log: true
+
+- name: "{{ container_name }} | Template extra template files"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: "{{ item.mode | default('0664') }}"
+  loop: "{{ container_extra_templates | default([]) }}"
+  no_log: true
+
+- name: "{{ container_name }} | Start container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ dockers_path }}/{{ container_name }}/"
+  when: not ansible_check_mode
+""")
+
+        # Shared GitHub clone logic
+        self._write_file(path / "roles/dockers/tasks/common/github.yml", """---
+# Shared GitHub clone logic. Called via import_tasks from containers
+# that build from a cloned repo.
+#
+# Required vars:
+#   repo_url      (str)  — SSH URL
+#   repo_dest     (str)  — absolute path on target
+#
+# Optional vars:
+#   repo_version  (str)  — branch/tag/commit (default: main)
+
+- name: "{{ container_name }} | Ensure git is installed"
+  ansible.builtin.package:
+    name: git
+    state: present
+
+- name: "{{ container_name }} | Ensure destination parent exists"
+  ansible.builtin.file:
+    path: "{{ repo_dest | dirname }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: "{{ container_name }} | Clone/update repository"
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dest }}"
+    version: "{{ repo_version | default('main') }}"
+    update: true
+    accept_hostkey: true
+  become: true
+  become_user: "{{ ansible_user }}"
+
+- name: "{{ container_name }} | Set ownership on cloned directory"
+  ansible.builtin.file:
+    path: "{{ repo_dest }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+    recurse: true
+""")
+
+        # Setup task
+        self._write_file(path / "roles/dockers/tasks/setup.yml", """---
+- name: Ensure Docker service is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+""")
+
+        # Main task dispatcher
+        self._write_file(path / "roles/dockers/tasks/main.yml", """---
+# Common setup always runs regardless of tags.
+- import_tasks: setup.yml
+  tags: always
+
+# Add container imports here as you scaffold them:
+# - import_tasks: containers/my-app.yml
+#   tags: my-app
+""")
+
+        self._write_file(path / "requirements.yml", """---
+collections:
+  - name: community.general
+  - name: community.docker
+""")
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\nansible-galaxy install -r requirements.yml\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Deploy all containers
+ansible-playbook playbook.yml -i inventory.yml
+
+# Deploy a single container by tag
+ansible-playbook playbook.yml -i inventory.yml --tags my-app
+
+# Scaffold a new container (if wizard is available)
+uv run python main.py
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
     # Web: React + Vite (CLI-delegated)
     # =====================================================================
 
@@ -1314,6 +1798,7 @@ def main() -> None:
             "html",
             "fastapi", "flask", "python-cli", "python-lib", "python-data",
             "go-gin", "go-chi", "go-cli", "go-module",
+            "ansible", "ansible-role", "ansible-docker-container",
             "react", "astro", "hono", "t3",
         ],
         help="Project type",
