@@ -1,19 +1,18 @@
 ---
 name: project-scaffolding
 description: >
-  IDE-grade project scaffolding wizard for creating new projects with comprehensive configuration.
-  Supports 70+ project types: HTML/CSS websites, React, Next.js, Vue, Astro, Remix, React Native,
-  Flutter, Expo, FastAPI, Django, Express, NestJS, Go/Gin, Rust/Axum, Spring Boot, Hono, Elysia,
-  Chrome Extensions, VS Code Extensions, Tauri desktop apps, serverless functions, and more.
-  Provides WebStorm/PyCharm-level project creation with interactive SDK selection, framework
-  configuration, database setup, and DevOps tooling. Use when: creating a new project, setting up
-  a framework application, initializing a codebase, scaffolding boilerplate, building extensions,
-  creating mobile/desktop/web apps, setting up monorepos, or making static websites/landing pages.
+  Opinionated project scaffolding for Python, Go, and web stacks. Creates fully configured
+  projects with 14 types: FastAPI, Flask, Python CLI (Typer), Python library, data analysis
+  (Polars + Jupyter), Go Gin API, Go Chi API, Go CLI (Cobra), Go module, React + Vite,
+  Astro, Hono, T3 Stack, and static HTML/CSS. Python uses uv + Ruff + Pyright with src/
+  layout. Go uses standard cmd/internal/pkg layout with Makefile. Every project gets git init,
+  first commit, CLAUDE.md referencing zero-check, and MIT license. Use when: creating a new
+  project, initializing a codebase, scaffolding boilerplate, starting a new app or library.
 ---
 
 # Project Scaffolding Wizard
 
-Professional-grade project scaffolding comparable to WebStorm/PyCharm project wizards. Creates fully configured projects with SDK setup, framework options, database configuration, linting, and CI/CD.
+Opinionated project scaffolding for Python, Go, and web stacks.
 
 ## Wizard Workflow
 
@@ -21,25 +20,14 @@ When a user requests a new project, follow this interactive workflow:
 
 ### Step 1: Project Type Selection
 
-Present the project type menu. Ask the user to select a category and type:
+Present the project type menu:
 
 | Category | Types |
 |----------|-------|
-| **Static Websites** | HTML5 (no CSS), HTML/CSS, HTML+Sass, HTML+Tailwind, Landing Page, Multi-page Site |
-| **Frontend Web** | React, Next.js, Vue, Nuxt, Svelte, Angular, Astro, Remix, Solid, Qwik, Preact |
-| **Mobile/Desktop** | React Native, Expo, Flutter, Tauri, Electron, Ionic |
-| **Backend (JS/TS)** | Express, NestJS, Fastify, Hono, Elysia, tRPC, Koa |
-| **Backend (Python)** | FastAPI, Django, Django REST, Flask, Litestar |
-| **Backend (Go)** | Gin, Fiber, Echo, Chi |
-| **Backend (Rust)** | Axum, Actix, Rocket |
-| **Backend (Java)** | Spring Boot, Quarkus, Ktor, Micronaut |
-| **Backend (Other)** | Laravel, Rails, .NET Web API |
-| **Libraries** | TypeScript NPM, Python PyPI, Go Module, Rust Crate |
-| **CLI Tools** | Node CLI, Python CLI (Typer/Click), Go CLI (Cobra), Rust CLI (Clap) |
-| **Extensions** | Chrome Extension, Firefox Extension, VS Code Extension, Figma Plugin, Obsidian Plugin |
-| **Serverless** | AWS Lambda, Cloudflare Workers, Vercel Functions, Supabase Functions |
-| **Full-Stack** | T3 Stack, MERN, PERN, MEAN |
-| **Monorepos** | Turborepo, Nx Workspace, pnpm Workspace |
+| **Static** | HTML/CSS + Tailwind CDN |
+| **Python** | FastAPI, Flask, CLI (Typer), Library (PyPI), Data Analysis (Polars + Jupyter) |
+| **Go** | Gin API, Chi API, CLI (Cobra), Module (library) |
+| **Web** | React + Vite, Astro, Hono, T3 Stack |
 
 ### Step 2: Basic Configuration
 
@@ -48,210 +36,120 @@ Gather for ALL projects:
 - **Location/directory**
 - **Description**
 - **Author name**
-- **License** (MIT, Apache-2.0, GPL-3.0, ISC, Unlicense)
+- **License** (default: MIT)
 
-### Step 3: Framework-Specific Options
+### Step 3: Type-Specific Options
 
-Load `references/wizard-options.md` for detailed configuration options based on the selected project type. Key decisions include:
+#### Python projects
+- **Database** — none, SQLite, PostgreSQL, MySQL (adds SQLAlchemy + Alembic for FastAPI/Flask)
+- **Docker** — include compose.yml (FastAPI only)
 
-- **Language/SDK version** - Node.js, Python, Go, Rust, Java versions
-- **Package manager** - npm, pnpm, yarn, bun, poetry, uv
-- **CSS framework** - Tailwind, CSS Modules, Styled Components
-- **State management** - Zustand, Redux, Jotai, TanStack Query
-- **Database/ORM** - PostgreSQL, SQLite, Prisma, SQLAlchemy, sqlc
-- **Authentication** - NextAuth, JWT, OAuth2
-- **Testing** - Vitest, Jest, pytest, Playwright
+#### Go projects
+- No additional options needed — standard layout is applied.
 
-### Step 4: Code Quality & DevOps
+#### Web projects
+- CLI tools handle configuration interactively (Vite, Astro, Hono, create-t3-app).
 
-- **Linting** - ESLint, Ruff, golangci-lint, clippy
-- **Formatting** - Prettier, Ruff, gofmt, rustfmt
-- **Pre-commit hooks** - husky + lint-staged, pre-commit framework
-- **CI/CD** - GitHub Actions, GitLab CI
-- **Docker** - Dockerfile (multi-stage), docker-compose
-- **Deployment** - Vercel, Railway, Fly.io, AWS, self-hosted
+### Step 4: Generate Project
 
-### Step 5: Generate Project
+Use `scripts/scaffold.py` for Python, Go, and HTML projects.
+Use native CLI tools for web projects (React/Astro/Hono/T3), with scaffold.py as fallback.
 
-Use `scripts/scaffold.py` or native CLI tools to create the project structure.
+```bash
+# Direct usage
+python scripts/scaffold.py my-project --type fastapi --description "My API" --author "Travis"
+python scripts/scaffold.py my-tool --type go-cli --description "CLI tool"
+python scripts/scaffold.py my-analysis --type python-data --description "Sales analysis"
+```
+
+## Opinionated Defaults
+
+These are non-negotiable unless the user explicitly overrides:
+
+| Setting | Default | Rationale |
+|---------|---------|-----------|
+| Python version | 3.13 | Current stable, not bleeding edge 3.14 |
+| Python tooling | uv + Ruff + Pyright | Astral ecosystem + Microsoft type checker |
+| Python layout | `src/` via hatchling | Clean imports, catches packaging bugs early |
+| Python dataframes | Polars (not pandas) | Lazy execution, memory efficient, modern API |
+| Ruff rules | E4,E7,E9,F,B,I,UP,N,S,SIM,RET,PTH | Security rules included (S), pathlib enforced (PTH) |
+| Go version | 1.24 | Current stable |
+| Go layout | cmd/internal/pkg + Makefile | Standard Go project layout |
+| Go router | Gin or Chi (user picks) | Both well-maintained, user preference |
+| Go CLI | Cobra | De facto standard |
+| Web language | TypeScript | Always, no JS option |
+| CSS framework | Tailwind | Default for React, Astro |
+| Package manager | pnpm | For web projects |
+| Type checker | Pyright (not mypy, not ty) | Best IDE integration, mature |
+| Every project | git init + first commit | No reason not to |
+| Every project | CLAUDE.md | References zero-check gauntlet |
+| Every project | MIT license | Default, overridable |
 
 ## CLI Integration
 
-Prefer native CLI tools when available:
+Web projects prefer native CLI tools:
 
 | Framework | CLI Command |
 |-----------|-------------|
-| Next.js | `npx create-next-app@latest` |
 | React (Vite) | `npm create vite@latest -- --template react-ts` |
-| Vue | `npm create vue@latest` |
-| Nuxt | `npx nuxi@latest init` |
 | Astro | `npm create astro@latest` |
-| Remix | `npx create-remix@latest` |
-| SvelteKit | `npm create svelte@latest` |
-| Solid | `npm create solid@latest` |
-| Expo | `npx create-expo-app@latest` |
-| React Native | `npx @react-native-community/cli init` |
-| Flutter | `flutter create` |
-| Tauri | `npm create tauri-app@latest` |
-| NestJS | `npx @nestjs/cli new` |
-| Spring Boot | `spring init` or start.spring.io |
-| Go | `go mod init` |
-| Rust | `cargo new` |
-| Chrome Ext | `npm create plasmo@latest` |
+| Hono | `npm create hono@latest` |
 | T3 Stack | `npx create-t3-app@latest` |
 
-## Quick Start Examples
-
-### HTML/CSS Website
-```bash
-mkdir my-website && cd my-website
-touch index.html style.css
-# Or use boilerplate:
-npx degit h5bp/html5-boilerplate my-website
-```
-
-### HTML + Tailwind (CDN)
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Website</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100">
-  <h1 class="text-3xl font-bold">Hello World</h1>
-</body>
-</html>
-```
-
-### T3 Stack (Next.js + tRPC + Prisma)
-```bash
-npx create-t3-app@latest my-app
-```
-
-### Expo (React Native)
-```bash
-npx create-expo-app@latest my-app --template tabs
-```
-
-### Tauri Desktop App
-```bash
-npm create tauri-app@latest my-app -- --template react-ts
-```
-
-### Chrome Extension
-```bash
-npm create plasmo@latest my-extension
-```
+If a CLI tool is unavailable, scaffold.py writes a README with the manual command.
 
 ## Example Conversations
 
-### Simple HTML/CSS Website
+### Python data analysis
 ```
-User: Create a simple website with HTML and CSS
+User: Create a data analysis project for recipe analytics
 
-Claude: I'll create a static HTML/CSS website:
+Claude: I'll scaffold a Polars + Jupyter data analysis project:
+- src/ layout with polars, plotly, pyarrow
+- notebooks/ directory for Jupyter work
+- data/raw/ and data/processed/ for data pipeline
+- uv for dependency management, Ruff + Pyright for quality
+- CLAUDE.md referencing zero-check
 
-- Multi-page (Home, About, Contact)
-- Mobile-first responsive CSS
-- BEM naming convention
-- Live Server for development
-
-Structure:
-my-website/
-├── index.html
-├── about.html
-├── contact.html
-├── css/style.css
-├── js/main.js
-└── images/
-
-Shall I create this?
+Name: recipe-analytics
+Type: python-data
 ```
 
-### Mobile App
+### Go API
 ```
-User: Create a mobile app for iOS and Android
+User: New Go API with Chi
 
-Claude: I recommend Expo for the easiest setup:
+Claude: I'll create a Go Chi API project:
+- Standard cmd/internal/pkg layout
+- Chi router with middleware (Logger, Recoverer)
+- Health check endpoint
+- Makefile with build/test/lint/run targets
+- golangci-lint for linting
 
-- TypeScript
-- Expo Router (file-based navigation)
-- NativeWind (Tailwind for RN)
-- Tab navigation template
-
-Ready to scaffold?
-```
-
-### Full-Stack with Type Safety
-```
-User: Create a full-stack app with type-safe API
-
-Claude: I recommend the T3 Stack:
-
-- Next.js 16 (App Router)
-- tRPC (type-safe API)
-- Prisma (type-safe ORM)
-- Tailwind CSS
-- NextAuth.js
-- PostgreSQL with docker-compose
-
-This gives you full type safety from database to frontend!
+Name: my-api
+Type: go-chi
 ```
 
-### Chrome Extension
+### FastAPI with database
 ```
-User: Build a Chrome extension
+User: FastAPI project with PostgreSQL
 
-Claude: What features do you need?
+Claude: I'll scaffold a FastAPI project with PostgreSQL:
+- src/ layout with uv + hatchling
+- SQLAlchemy 2.0 + Alembic for migrations
+- asyncpg driver
+- Pydantic settings for config
+- Health check endpoint with test
 
-- Popup UI
-- Content script (modifies pages)
-- Background service worker
-- Side panel
-
-Tech stack: React + Vite + TypeScript + Manifest V3
-
-I recommend using Plasmo framework for easier development.
+Name: my-api
+Type: fastapi, Database: postgresql
 ```
 
 ## Available Resources
 
-Load reference files based on what you need:
-
 | Resource | When to Load | Purpose |
 |----------|--------------|---------|
-| `references/wizard-options.md` | During Step 3 (gathering user preferences) | Configuration choices and defaults for each framework |
-| `references/frameworks.md` | When generating code | Project structures, code examples, configuration files |
-| `references/best-practices.md` | For architecture decisions | Directory organization, naming conventions, patterns |
-| `scripts/scaffold.py` | For custom scaffolding | Python engine when CLI tools aren't suitable |
-
-**Workflow:**
-1. Present options from `wizard-options.md` to gather user preferences
-2. Use `frameworks.md` for code patterns and project structure when generating
-3. Consult `best-practices.md` for architecture decisions
-
-## Default Recommendations
-
-| Category | Recommendation |
-|----------|----------------|
-| JS Runtime | Node.js 24 LTS |
-| Package Manager | pnpm |
-| Python Version | 3.14 |
-| Go Version | 1.26 |
-| Rust Edition | 2024 |
-| Java Version | 21 LTS |
-| CSS Framework | Tailwind CSS |
-| State (React) | Zustand + TanStack Query |
-| ORM (Node) | Prisma |
-| ORM (Python) | SQLAlchemy 2.0 |
-| ORM (Go) | sqlc |
-| Testing (JS) | Vitest |
-| Testing (Python) | pytest |
-| E2E Testing | Playwright |
-| Linting (JS) | ESLint + Prettier |
-| Linting (Python) | Ruff |
-| CI/CD | GitHub Actions |
-| Containerization | Multi-stage Dockerfile |
+| `references/wizard-options.md` | Step 3 (gathering preferences) | Detailed config choices per type |
+| `references/frameworks.md` | When generating code | Project structures and code patterns |
+| `references/best-practices.md` | Architecture decisions | Directory organization, naming, patterns |
+| `scripts/scaffold.py` | For project generation | Python engine for all 14 types |

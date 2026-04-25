@@ -1,216 +1,125 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Project Overview
 
-This is a **Claude Code skill** that provides IDE-grade project scaffolding functionality, comparable to WebStorm and PyCharm project wizards. It supports 70+ project types across web, mobile, desktop, and backend development.
+A **Claude Code skill** for opinionated project scaffolding across Python, Go, and web stacks. Supports 14 project types with strong defaults and minimal configuration.
 
 ### Architecture
 
 ```
 project-scaffolding/
-├── SKILL.md                 # Skill definition - user interface and wizard workflow
-├── scripts/scaffold.py      # Core scaffolding engine (2900+ lines)
+├── SKILL.md                 # Skill definition — wizard workflow and trigger patterns
+├── scripts/scaffold.py      # Core scaffolding engine (~750 lines)
 ├── references/
-│   ├── frameworks.md        # Framework-specific configuration guides
-│   └── best-practices.md    # Architecture patterns and conventions
-└── assets/                  # Templates and boilerplates
+│   ├── frameworks.md        # Project structures and code patterns per type
+│   ├── wizard-options.md    # Detailed config options per type
+│   └── best-practices.md    # Directory layout, naming, testing, Docker patterns
 ```
 
-**Key architectural principles:**
-- **SKILL.md** is the contract - it defines what projects can be created and the interactive wizard flow
-- **scaffold.py** is the implementation - a comprehensive Python engine that generates project structures
-- **references/** contains deep knowledge - framework configurations, best practices, tooling options
+**Key principles:**
+- **SKILL.md** is the contract — defines what can be created and the interactive wizard flow
+- **scaffold.py** is the implementation — generates project structures via a `creators` dict
+- **references/** contains deep knowledge — framework configs, best practices, tooling rationale
 
-## How the Skill Works
+## Supported Project Types
 
-### Trigger Patterns
-The skill activates when users request project creation:
-- "Create a new [framework] project"
-- "Create a simple website" / "Create HTML/CSS project"
-- "Set up a [language] application"
-- "Initialize a [mobile/desktop/web] app"
-- "Build a Chrome extension"
+| Category | Types |
+|----------|-------|
+| Static | HTML/CSS + Tailwind CDN |
+| Python | FastAPI, Flask, CLI (Typer), Library (PyPI), Data Analysis (Polars + Jupyter) |
+| Go | Gin API, Chi API, CLI (Cobra), Module (library) |
+| Web | React + Vite, Astro, Hono, T3 Stack |
 
-### Wizard Flow (SKILL.md Lines 10-688)
-1. **Project Category & Type Selection** - Present 70+ options organized by category
-2. **Basic Configuration** - Name, description, author, license
-3. **Language & SDK** - Version selection (Node.js, Python, Go, Rust, Java)
-4. **Framework Options** - CSS frameworks, state management, routing, ORM
-5. **Code Quality Tools** - Linting, formatting, testing
-6. **DevOps Configuration** - Docker, CI/CD, deployment targets
+## Opinionated Defaults
 
-### Project Type Categories
-- **Static Websites**: HTML/CSS, HTML+Sass, HTML+Tailwind, landing pages
-- **Frontend**: React, Next.js, Vue, Nuxt, Svelte, Angular, Astro, Remix, Solid, Qwik
-- **Mobile/Desktop**: React Native, Expo, Flutter, Tauri, Electron, Ionic
-- **Backend (JS/TS)**: Express, NestJS, Fastify, Hono, Elysia, tRPC, Koa
-- **Backend (Python)**: FastAPI, Django, Flask, Litestar
-- **Backend (Go)**: Gin, Fiber, Echo, Chi
-- **Backend (Rust)**: Axum, Actix, Rocket
-- **Backend (Java/Kotlin)**: Spring Boot, Quarkus, Ktor, Micronaut
-- **Libraries**: TypeScript NPM, Python PyPI, Go Module, Rust Crate
-- **CLI Tools**: Node.js CLI, Python CLI (Typer/Click), Go CLI (Cobra), Rust CLI (Clap)
-- **Extensions**: Chrome Extension, Firefox Extension, VS Code Extension, Figma Plugin
-- **Serverless**: AWS Lambda, Cloudflare Workers, Vercel Functions, Supabase Functions
-- **Monorepos**: Turborepo, Nx Workspace, pnpm Workspace
+| Setting | Default | Rationale |
+|---------|---------|-----------|
+| Python version | 3.13 | Current stable |
+| Python tooling | uv + Ruff + Pyright | Astral ecosystem + Microsoft type checker |
+| Python layout | `src/` via hatchling | Clean imports, catches packaging bugs early |
+| Python dataframes | Polars (not pandas) | Lazy execution, memory efficient |
+| Ruff rules | E4,E7,E9,F,B,I,UP,N,S,SIM,RET,PTH | Security (S) + pathlib (PTH) included |
+| Go version | 1.24 | Current stable |
+| Go layout | cmd/internal/pkg + Makefile | Standard Go project layout |
+| Web language | TypeScript | Always, no JS option |
+| CSS framework | Tailwind | Default for web projects |
+| Package manager | pnpm (web), uv (Python) | Modern, fast |
+| Type checker | Pyright (not mypy, not ty) | Best IDE integration |
+| Every project | git init + first commit | Always |
+| Every project | CLAUDE.md | References zero-check gauntlet |
+| Every project | MIT license | Default, overridable |
 
 ## Working with scaffold.py
 
-### Core Components
+### How It Works
 
-**ProjectConfig dataclass** (lines 64-101): Configuration object passed to all project creators
-- SDK/runtime versions (Node, Python, Go, Rust, Java)
-- Framework options (CSS, database, ORM)
-- Tooling flags (ESLint, Prettier, testing, Docker, CI)
+scaffold.py uses a flat `creators` dict mapping type names to creator functions:
 
-**ProjectScaffolder class** (lines 103-2834): Main scaffolding engine
-- `create_project()` - Entry point, delegates to project-type-specific methods
-- `_create_react()`, `_create_nextjs()`, `_create_fastapi()`, etc. - Project generators
-- Helper methods for common files, configs, Docker, CI/CD
+```python
+creators = {
+    "html": _create_html,
+    "fastapi": _create_fastapi,
+    "go-gin": _create_go_gin,
+    # ... 14 total
+}
+```
 
-### Project Generator Pattern
+Each creator function takes `(project_dir, name, pkg, desc, author)` and builds the full project tree. Common helpers handle cross-cutting concerns:
 
-Each `_create_[framework]()` method follows this pattern:
-1. **Create directory structure** - Use `_create_dirs()` for nested folders
-2. **Define dependencies** - Build `deps` and `dev_deps` dictionaries
-3. **Generate package.json/pyproject.toml** - Use `_create_package_json()` or write directly
-4. **Create config files** - TypeScript, ESLint, Prettier, Tailwind, etc.
-5. **Write source files** - Entry points, app files, example components
-6. **Add common files** - Use `_create_common_files()` for .gitignore, README, .env.example
-
-### Important Methods
-
-- **`_create_tsconfig(config, framework)`** (lines 1217-1301): TypeScript config generator
-  - Framework-specific configs for: react, nextjs, vue, node, library, nestjs, angular
-  - Handles strict mode, path aliases, module resolution
-
-- **`_create_common_files(path, config, python=False)`** (lines 1303-1509):
-  - Generates .gitignore (different for Python vs JS)
-  - Creates .env.example with sensible defaults
-  - Writes README.md with setup instructions
-  - Configures VS Code settings for linting/formatting
-  - Sets up GitHub Actions workflows
-  - Adds Docker configuration
-
-- **Template content methods** (lines 1706-2833): Generate file contents
-  - Vite configs, React components, Next.js layouts
-  - FastAPI/Django project structures
-  - Express/NestJS boilerplate
-  - Python/Node.js CLI templates
-
-### Key Design Decisions
-
-1. **Native CLI tools preferred**: The code recommends using official CLIs (create-next-app, create-vite) when available, scaffold.py provides fallback/augmentation
-
-2. **Multi-stage Docker builds**: All Docker configs use multi-stage builds for optimization
-
-3. **Type safety everywhere**: TypeScript strict mode by default, Python type hints encouraged
-
-4. **Modern tooling defaults**: Vite over CRA, Ruff over Flake8+Black, pnpm over npm
-
-## Modifying the Skill
+- `_pyproject_toml()` — generates pyproject.toml with uv/hatchling/Ruff/Pyright config
+- `_go_makefile()` — Makefile with build/test/lint/run/clean targets
+- `_git_init()` — git init + first commit
+- `_claude_md()` — CLAUDE.md referencing zero-check
+- `_license_mit()` — MIT license with author name
 
 ### Adding a New Project Type
 
-1. **Update SKILL.md**: Add to the project type list (lines 18-152) with clear description
-2. **Add to wizard options**: Include in the formatted table in SKILL.md
-3. **Implement creator method** in scaffold.py:
-   ```python
-   def _create_[framework](self, path: Path, config: ProjectConfig):
-       # 1. Create directories
-       self._create_dirs(path, ["src", "tests", ...])
+1. Write a `_create_[type]()` function following the existing pattern
+2. Add it to the `creators` dict
+3. Update SKILL.md with the new type in the wizard table
+4. Update references/wizard-options.md with type-specific config
+5. Update references/frameworks.md with the directory structure and key patterns
 
-       # 2. Define dependencies
-       deps = {"framework": "^1.0.0"}
-       dev_deps = {"typescript": "^5.0.0"}
+### CLI Usage
 
-       # 3. Create package.json/pyproject.toml
-       package_json = self._create_package_json(config, deps, dev_deps, scripts)
-
-       # 4. Write config files
-       # 5. Create source files
-       # 6. Add common files
-       self._create_common_files(path, config)
-   ```
-4. **Map in create_project()**: Add to the `creators` dict (line 118)
-5. **Add template methods**: Create `_[framework]_[file]()` methods for file contents
-
-### Adding Framework Options
-
-To add a new CSS framework, ORM, or other option:
-1. Add to the relevant Enum (lines 18-61): `CSSFramework`, `Database`, `ORM`, etc.
-2. Update ProjectConfig dataclass if needed (lines 64-101)
-3. Add conditional logic in project creators to handle the new option
-4. Update SKILL.md to document the new option in the wizard workflow
-
-### Updating Dependencies
-
-When updating default versions:
-- Search for version strings in scaffold.py (e.g., `"^18.2.0"`)
-- Update consistently across all occurrences
-- Consider updating references/frameworks.md for documentation
-
-## Testing Approach
-
-The scaffold.py script is designed to be run standalone:
 ```bash
-# Test the scaffolding engine directly
-python scripts/scaffold.py react my-test-app --typescript --tailwind
-
-# Or use through Claude Code
-# Just ask: "Create a React app with TypeScript and Tailwind"
+python scripts/scaffold.py my-project --type fastapi --description "My API" --author "Travis"
+python scripts/scaffold.py my-tool --type go-cli --description "CLI tool"
+python scripts/scaffold.py my-analysis --type python-data --description "Sales analysis"
 ```
 
-To verify changes:
-1. Run scaffold.py with various project types
-2. Check generated directory structure
-3. Verify all config files are valid (no syntax errors)
-4. Test that `npm install` / `pip install` succeeds
-5. Confirm dev server starts: `npm run dev` / `uvicorn app.main:app`
+## Dev Workflow
 
-## Common Tasks
+```bash
+# Lint the scaffolding engine
+uv run ruff check scripts/scaffold.py
+uv run ruff format scripts/scaffold.py
+uv run pyright scripts/scaffold.py
 
-### Update Default Node.js Version
-Search for `node_version: str = "24"` in ProjectConfig (line 76) and update. Also update in templates:
-- Dockerfile templates (search for `FROM node:`)
-- GitHub Actions workflows (search for `node-version:`)
+# Test by generating a project
+python scripts/scaffold.py /tmp/test-project --type fastapi --description "test"
 
-### Update Default Python Version
-Search for `python_version: str = "3.14"` in ProjectConfig (line 77). Update in:
-- Dockerfile templates
-- GitHub Actions workflows
-- pyproject.toml templates
-
-### Add New Testing Framework
-1. Add to project creator conditionals (e.g., in `_create_react()`)
-2. Add dependencies to `dev_deps` dict
-3. Create test config file (e.g., `_vitest_config()`, `_jest_config()`)
-4. Update package.json scripts
-
-### Customize Project Templates
-Template methods return strings with file contents. To customize:
-1. Find the relevant method (e.g., `_react_app()` for React App.tsx)
-2. Modify the returned string
-3. Use f-strings to inject config values: `f"{config.name}"`
+# Repackage the .skill file after changes
+cd project-scaffolding && zip -r ../project-scaffolding.skill SKILL.md scripts/ references/
+```
 
 ## Packaging
 
-After any changes to files under `project-scaffolding/`, repackage the `.skill` file at the repo root:
+After any changes to files under `project-scaffolding/`, repackage the `.skill` file:
 
 ```bash
 cd project-scaffolding && zip -r ../project-scaffolding.skill SKILL.md scripts/ references/
 ```
 
-This keeps `project-scaffolding.skill` in sync with the source files. Always do this before committing.
+Always repackage before committing.
 
 ## Important Notes
 
-- **SKILL.md is the source of truth** for what the skill can do - always update it when adding features
-- **Keep scaffold.py and SKILL.md in sync** - options in SKILL.md must be implemented in scaffold.py
-- **Repackage the .skill file** after any changes to `project-scaffolding/` — see Packaging section above
-- **Use type hints** - The codebase uses Python dataclasses and type hints throughout
-- **Follow the pattern** - New project creators should match the structure of existing ones
-- **Test locally first** - scaffold.py can be run directly without Claude Code for faster iteration
-- **Version consistency** - When updating a framework version, update in all occurrences (deps, docs, configs)
+- **SKILL.md is the source of truth** for what the skill can do — always update it when adding features
+- **Keep scaffold.py and SKILL.md in sync** — options in SKILL.md must be implemented in scaffold.py
+- **Ruff rules are intentional** — see references/best-practices.md for the rationale behind each rule selection
+- **Web types delegate to native CLIs** — React/Astro/Hono/T3 use npm create / npx, scaffold.py is the fallback
+- **Polars over pandas** — this is a deliberate choice for all new data projects
+- **Pyright over mypy/ty** — ty is too new, mypy lacks IDE integration depth
