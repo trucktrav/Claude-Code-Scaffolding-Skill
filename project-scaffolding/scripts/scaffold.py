@@ -428,6 +428,7 @@ dev = [
     "ruff>=0.4.0",
     "pyright>=1.1",
 ]
+{extra_sections}
 {scripts_str}
 [build-system]
 requires = ["hatchling"]
@@ -454,7 +455,7 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-{extra_sections}"""
+"""
 
     def _python_common_files(self, path: Path, config: ProjectConfig) -> None:
         """Write common files for all Python projects."""
@@ -860,8 +861,7 @@ def test_hello():
             "pyarrow>=17.0.0",
         ]
 
-        extra = """[dependency-groups]
-notebook = [
+        extra = """notebook = [
     "jupyter>=1.1",
     "ipykernel>=7.0",
     "nbstripout>=0.7",
