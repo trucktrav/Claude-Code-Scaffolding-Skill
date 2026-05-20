@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-A **Claude Code skill** for opinionated project scaffolding across Python, Go, and web stacks. Supports 14 project types with strong defaults and minimal configuration.
+A **Claude Code skill** for opinionated project scaffolding across Python, Go, web, and Ansible stacks. Supports 17 project types with strong defaults and minimal configuration.
 
 ### Architecture
 
@@ -30,7 +30,12 @@ project-scaffolding/
 | Static | HTML/CSS + Tailwind CDN |
 | Python | FastAPI, Flask, CLI (Typer), Library (PyPI), Data Analysis (Polars + Jupyter) |
 | Go | Gin API, Chi API, CLI (Cobra), Module (library) |
+| Ansible | `ansible` (project), `ansible-role`, `ansible-docker-container` |
 | Web | React + Vite, Astro, Hono, T3 Stack |
+
+The canonical source of truth for what's supported is the `creators` dict
+in `project-scaffolding/scripts/scaffold.py`. If that dict and this table
+disagree, the dict wins — update the docs.
 
 ## Opinionated Defaults
 
@@ -55,14 +60,16 @@ project-scaffolding/
 
 ### How It Works
 
-scaffold.py uses a flat `creators` dict mapping type names to creator functions:
+scaffold.py uses a flat `creators` dict mapping type names to creator
+methods on the scaffold class:
 
 ```python
 creators = {
-    "html": _create_html,
-    "fastapi": _create_fastapi,
-    "go-gin": _create_go_gin,
-    # ... 14 total
+    "html": self._create_html,
+    "fastapi": self._create_fastapi,
+    "go-gin": self._create_go_api,           # go-gin and go-chi share _create_go_api
+    "ansible": self._create_ansible,
+    # ... 17 total
 }
 ```
 

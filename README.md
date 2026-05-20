@@ -1,452 +1,152 @@
-# Project Scaffolding Skill for Claude Code
+# project-scaffolding skill for Claude Code
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.0-green.svg)](README.md#version-history)
-[![Project Types](https://img.shields.io/badge/project%20types-70%2B-orange.svg)](README.md#supported-project-types)
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](scripts/scaffold.py)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-blueviolet.svg)](SKILL.md)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg)](project-scaffolding/scripts/scaffold.py)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-blueviolet.svg)](project-scaffolding/SKILL.md)
 
-IDE-grade project scaffolding wizard comparable to WebStorm and PyCharm project wizards. Supports **70+ project types** across web, mobile, desktop, and backend development.
+Opinionated project scaffolding for Python, Go, web, and Ansible stacks
+— Claude Code skill plus a standalone CLI engine. **17 project types**
+with strong defaults; no kitchen-sink, no menu of every framework on
+earth.
 
-## Features
+This skill replaced an earlier 70+ type scaffolder. The narrower set is
+deliberate: every type ships with a curated toolchain (uv + Ruff +
+Pyright for Python; `cmd/internal/pkg` + Makefile for Go; pnpm + Vite
+for web) that's known to work end-to-end with `zero-check`.
 
-- **Interactive Wizard Workflow**: Step-by-step project configuration like JetBrains IDEs
-- **70+ Project Types**: From simple HTML/CSS to complex full-stack applications
-- **SDK/Environment Configuration**: Node.js, Python, Go, Rust, Java version selection
-- **Framework-Specific Options**: TypeScript, CSS frameworks, state management, routing
-- **Database & ORM Setup**: PostgreSQL, MySQL, SQLite, MongoDB with various ORMs
-- **Code Quality Tools**: ESLint, Prettier, Ruff, mypy, golangci-lint, clippy
-- **Testing Configuration**: Vitest, Jest, pytest, Go testing, Playwright
-- **DevOps Ready**: Docker, docker-compose, GitHub Actions CI/CD
+## Supported project types
 
-## Supported Project Types
+| Category | Types | Stack |
+|----------|-------|-------|
+| **Static** | HTML/CSS + Tailwind CDN | one-file or multi-page, no build step |
+| **Python** | FastAPI, Flask, Python CLI, Python lib, Python data analysis | uv + Ruff + Pyright, `src/` layout via hatchling; Polars for data |
+| **Go** | Gin API, Chi API, CLI (Cobra), Module (library) | Go 1.24, `cmd/internal/pkg` + Makefile, golangci-lint |
+| **Ansible** | Project, role, docker-container role | ansible-lint preconfigured |
+| **Web** | React + Vite, Astro, Hono, T3 Stack | TypeScript always, Tailwind default; delegates to native CLIs (`npm create vite`, `create-t3-app`, etc.) |
 
-### Static Websites (HTML/CSS/JS)
-- Pure HTML5 (no CSS)
-- HTML/CSS (no build tools)
-- HTML + Sass/SCSS
-- HTML + Tailwind CLI
-- Landing Pages
-- Multi-page Sites
+The full list lives in the `creators` dict at
+`project-scaffolding/scripts/scaffold.py`. If a docs table disagrees
+with that dict, the dict wins.
 
-### Frontend Web Frameworks
-- React (Vite)
-- Next.js 16 (App Router)
-- Vue 3 / Nuxt 3
-- SvelteKit
-- Angular
-- Astro
-- Remix
-- Solid.js
-- Qwik
-- Preact
+## Install
 
-### Mobile & Cross-Platform
-- React Native
-- Expo
-- Flutter
-- Tauri (Desktop)
-- Electron
-- Ionic
+The skill ships as a packaged zip: `project-scaffolding.skill`.
 
-### Backend - JavaScript/TypeScript
-- Express
-- NestJS
-- Fastify
-- Hono
-- Elysia
-- tRPC
-- Koa
-
-### Backend - Python
-- FastAPI
-- Django / Django REST
-- Flask
-- Litestar
-
-### Backend - Go
-- Go + Gin
-- Go + Fiber
-- Go + Echo
-- Go + Chi
-
-### Backend - Rust
-- Rust + Axum
-- Rust + Actix
-- Rust + Rocket
-
-### Backend - Java/Kotlin
-- Spring Boot
-- Quarkus
-- Ktor
-- Micronaut
-
-### Backend - Other
-- PHP + Laravel
-- Ruby on Rails
-- .NET Web API
-
-### Libraries & Packages
-- TypeScript NPM Package
-- Python PyPI Package
-- Go Module
-- Rust Crate
-
-### CLI Tools
-- Node.js CLI
-- Python CLI (Typer/Click)
-- Go CLI (Cobra)
-- Rust CLI (Clap)
-
-### Browser Extensions & Plugins
-- Chrome Extension (Manifest V3)
-- Firefox Extension
-- VS Code Extension
-- Figma Plugin
-- Obsidian Plugin
-
-### Serverless & Edge
-- AWS Lambda
-- Cloudflare Workers
-- Vercel Functions
-- Supabase Functions
-
-### Full-Stack Templates
-- T3 Stack (Next.js + tRPC + Prisma)
-- MERN Stack
-- PERN Stack
-- MEAN Stack
-
-### Monorepos
-- Turborepo
-- Nx Workspace
-- pnpm Workspace
-
-## Installation
-
-### Option 1: Extract from Archive (Recommended)
+**From the packaged `.skill`** (recommended):
 
 ```bash
-# Extract directly to your Claude Code skills directory
 unzip project-scaffolding.skill -d ~/.claude/skills/project-scaffolding
 ```
 
-### Option 2: Copy Source Files
-
-If you have the unpacked source files:
+**From the source tree** (development):
 
 ```bash
-# macOS/Linux
-mkdir -p ~/.claude/skills/project-scaffolding
-cp -r SKILL.md scripts/ references/ ~/.claude/skills/project-scaffolding/
+ln -s "$(pwd)/project-scaffolding" ~/.claude/skills/project-scaffolding
 ```
 
-### Verify Installation
+Once installed, Claude Code triggers the skill on prompts like:
 
-The skill will be available when you see it listed in your Claude Code skills. You can verify by checking:
+- "Create a new project"
+- "Scaffold a FastAPI backend"
+- "Start a Go CLI"
+- "Initialize a Python library"
+
+Or invoke the wizard directly via `/project-scaffolding`.
+
+## CLI usage
+
+The same scaffolder runs as a standalone CLI:
 
 ```bash
-ls ~/.claude/skills/project-scaffolding/
+python project-scaffolding/scripts/scaffold.py my-api \
+    --type fastapi \
+    --description "My API" \
+    --author "Travis"
+
+python project-scaffolding/scripts/scaffold.py my-tool \
+    --type go-cli \
+    --description "CLI tool"
+
+python project-scaffolding/scripts/scaffold.py my-role \
+    --type ansible-role \
+    --description "Custom geerlingguy-style role"
 ```
 
-## Usage
+`--type` must match a key in the `creators` dict.
 
-### Basic Usage
+## Opinionated defaults
 
-Simply ask Claude to create a project:
+| Setting | Default | Rationale |
+|---------|---------|-----------|
+| Python version | 3.13 | Current stable |
+| Python tooling | uv + Ruff + Pyright | Astral ecosystem + MS type checker |
+| Python layout | `src/` via hatchling | Catches packaging bugs early |
+| Python dataframes | Polars (not pandas) | Lazy execution, memory efficient |
+| Ruff rules | `E4,E7,E9,F,B,I,UP,N,S,SIM,RET,PTH` | Security (S) + pathlib (PTH) included |
+| Go version | 1.24 | Current stable |
+| Go layout | `cmd/internal/pkg` + Makefile | Standard Go project layout |
+| Web language | TypeScript | Always, no JS option |
+| CSS framework | Tailwind | Default for web projects |
+| Package manager | pnpm (web), uv (Python) | Modern, fast |
+| Type checker | Pyright | Best IDE integration |
+| Every project | `git init` + first commit | Always |
+| Every project | CLAUDE.md referencing zero-check | Always |
+| Every project | MIT license | Default, overridable |
+
+## What gets generated
+
+The scaffolder generates a full project tree, not just a skeleton. Each
+type includes:
+
+- Source layout (`src/`, `cmd/`, etc.)
+- Dependency manifest (`pyproject.toml`, `go.mod`, `package.json`)
+- Linting + type-check config (`ruff.toml` inline in pyproject, `golangci.yml`)
+- Test scaffold (`tests/` for Python, Go's built-in testing)
+- `Dockerfile` + `compose.yml` for FastAPI (when `--docker` is selected)
+- `Makefile` (Go projects)
+- `CLAUDE.md` referencing the [zero-check](../zero-check-pipeline) gauntlet
+- `README.md` stub
+- `.gitignore` matched to the toolchain
+- `git init` + initial commit
+
+## Wizard flow
+
+When triggered via Claude Code, the skill walks the user through a four-step wizard:
+
+1. **Project type** — pick from the table above
+2. **Basic config** — name, location, description, author, license
+3. **Type-specific options** — e.g. Python projects can request a DB (SQLite / PostgreSQL / MySQL, adds SQLAlchemy + Alembic on FastAPI/Flask); FastAPI can request Docker
+4. **Generate** — runs `scaffold.py` for Python / Go / HTML / Ansible; delegates to native CLIs for web
+
+See `project-scaffolding/SKILL.md` for the canonical wizard contract.
+
+## Repo layout
 
 ```
-Create a simple HTML/CSS website
+Claude-Code-Scaffolding-Skill/
+  project-scaffolding/
+    SKILL.md                       # Wizard workflow + trigger description
+    scripts/
+      scaffold.py                  # Core engine (~750 lines, 17 creators)
+    references/
+      frameworks.md                # Per-type structure + code patterns
+      wizard-options.md            # Detailed config options
+      best-practices.md            # Directory layout, naming, testing, Docker
+  project-scaffolding.skill        # Packaged zip (regenerate after edits)
+  CLAUDE.md                        # Agent notes
+  README.md                        # This file
 ```
 
-```
-Create a new React project with TypeScript and Tailwind
-```
+## Repackaging
 
-```
-Set up a FastAPI backend with PostgreSQL and SQLAlchemy
-```
+After any edit under `project-scaffolding/`, rebuild the `.skill` zip:
 
-```
-Build a Chrome extension with React
-```
-
-```
-Create a mobile app with Expo
-```
-
-```
-Initialize a Go API with Gin and PostgreSQL
-```
-
-### Interactive Wizard
-
-For detailed configuration, Claude will guide you through:
-
-1. **Project Category & Type** - Choose from 70+ options
-2. **Basic Configuration** - Name, description, author
-3. **Language & SDK** - Version selection, package managers
-4. **Framework Options** - CSS, state management, routing, ORM
-5. **Code Quality** - Linting, formatting, testing
-6. **DevOps** - Docker, CI/CD, deployment
-
-### Example Workflows
-
-#### Simple HTML/CSS Website
-```
-User: Create a simple website
-
-Claude: I'll create a static HTML/CSS website:
-
-**Structure:**
-- Multi-page (Home, About, Contact)
-- Mobile-first responsive CSS
-- BEM naming convention
-- Live Server for development
-
-**Files:**
-my-website/
-├── index.html
-├── about.html
-├── contact.html
-├── css/style.css
-├── js/main.js
-├── images/
-└── README.md
-
-Shall I create this?
-```
-
-#### Mobile App with Expo
-```
-User: Create a mobile app for iOS and Android
-
-Claude: I recommend Expo for the easiest setup:
-
-**Configuration:**
-- TypeScript
-- Expo Router (file-based navigation)
-- NativeWind (Tailwind for React Native)
-- Tab navigation template
-
-Ready to scaffold?
-```
-
-#### Go Backend API
-```
-User: Create a Go API with PostgreSQL
-
-Claude: I'll set up Go + Gin:
-
-**Structure:**
-- Standard Go layout (cmd/, internal/, pkg/)
-- sqlc for type-safe SQL
-- JWT authentication
-- Docker + docker-compose
-
-**Features:**
-- Swagger/OpenAPI docs
-- Graceful shutdown
-- Rate limiting
-
-Proceed?
-```
-
-## Configuration Options
-
-### JavaScript/TypeScript
-
-| Option | Choices |
-|--------|---------|
-| Runtime | Node.js 22/24, Bun, Deno |
-| Package Manager | npm, yarn, pnpm, bun |
-| CSS | Tailwind, CSS Modules, Styled Components, Emotion |
-| State | Zustand, Jotai, Redux, TanStack Query |
-| Testing | Vitest, Jest, Playwright |
-
-### Python
-
-| Option | Choices |
-|--------|---------|
-| Version | 3.12, 3.13, 3.14 |
-| Environment | venv, uv, poetry, pipenv, conda |
-| ORM | SQLAlchemy 2.0, SQLModel, Tortoise, Beanie |
-| Linting | Ruff, Flake8+Black, Pylint |
-| Testing | pytest |
-
-### Go
-
-| Option | Choices |
-|--------|---------|
-| Version | 1.25, 1.26 |
-| Framework | Gin, Fiber, Echo, Chi |
-| Database | sqlc, GORM, sqlx, Ent |
-| Testing | Built-in, Testify |
-
-### Rust
-
-| Option | Choices |
-|--------|---------|
-| Edition | 2021, 2024 |
-| Framework | Axum, Actix, Rocket |
-| Async Runtime | Tokio |
-| Database | SQLx |
-
-## What Gets Generated
-
-### HTML/CSS Website
-```
-my-website/
-├── index.html
-├── about.html
-├── contact.html
-├── css/
-│   ├── style.css
-│   └── reset.css
-├── js/main.js
-├── images/
-├── favicon.ico
-├── robots.txt
-└── README.md
-```
-
-### Next.js + tRPC + Prisma
-```
-my-nextjs-app/
-├── .github/workflows/ci.yml
-├── prisma/schema.prisma
-├── src/
-│   ├── app/
-│   ├── components/
-│   ├── lib/
-│   ├── server/api/
-│   └── types/
-├── tests/
-├── docker-compose.yml
-├── Dockerfile
-└── package.json
-```
-
-### Go + Gin
-```
-my-go-api/
-├── cmd/server/main.go
-├── internal/
-│   ├── api/handlers/
-│   ├── config/
-│   ├── models/
-│   └── repository/
-├── db/migrations/
-├── docker-compose.yml
-├── Dockerfile
-├── go.mod
-└── Makefile
-```
-
-### Chrome Extension
-```
-my-extension/
-├── src/
-│   ├── popup/
-│   ├── background/
-│   ├── content/
-│   └── options/
-├── public/
-│   ├── manifest.json
-│   └── icons/
-├── vite.config.ts
-└── package.json
-```
-
-## Comparison with IDE Wizards
-
-| Feature | WebStorm/PyCharm | This Skill |
-|---------|------------------|------------|
-| Project templates | ✅ | ✅ (70+) |
-| SDK selection | ✅ | ✅ |
-| Framework options | ✅ | ✅ |
-| Database setup | ✅ | ✅ |
-| Run configurations | ✅ | ✅ (VS Code) |
-| Git initialization | ✅ | ✅ |
-| Docker support | Limited | ✅ |
-| CI/CD setup | ❌ | ✅ |
-| Mobile apps | Limited | ✅ |
-| Browser extensions | ❌ | ✅ |
-
-## Quick Start Commands
-
-### HTML/CSS
 ```bash
-mkdir my-site && cd my-site && touch index.html style.css
-# Or use boilerplate:
-npx degit h5bp/html5-boilerplate my-site
+cd project-scaffolding && zip -r ../project-scaffolding.skill SKILL.md scripts/ references/
 ```
 
-### React + Vite
-```bash
-npm create vite@latest my-app -- --template react-ts
-```
-
-### Next.js (T3 Stack)
-```bash
-npx create-t3-app@latest my-app
-```
-
-### Expo (React Native)
-```bash
-npx create-expo-app@latest my-app --template tabs
-```
-
-### Astro
-```bash
-npm create astro@latest
-```
-
-### Tauri (Desktop)
-```bash
-npm create tauri-app@latest
-```
-
-### Chrome Extension
-```bash
-npm create plasmo@latest
-```
-
-## Files Included
-
-```
-project-scaffolding/
-├── SKILL.md              # Main skill definition (70+ project types)
-├── scripts/
-│   └── scaffold.py       # Scaffolding engine
-└── references/
-    ├── frameworks.md     # Framework configuration guides
-    ├── best-practices.md # Architecture patterns
-    └── wizard-options.md # Detailed wizard configuration options
-```
-
-## Tips for Best Results
-
-1. **Be specific** - "Create a React app with Tailwind and Zustand" works better than "create a web app"
-
-2. **Mention your stack** - Include database, auth, or other requirements upfront
-
-3. **Ask for recommendations** - Claude can suggest the best stack for your use case
-
-4. **Start simple** - For HTML/CSS, just say "create a simple website"
-
-5. **Specify platform** - For mobile, mention iOS/Android or both
-
-## Version History
-
-- **v3.0** - Major update: Tailwind CSS v4 (CSS-first config), ESLint flat config, React 19, Next.js 16, Svelte 5 (Runes), Angular 19, Vite 7, Express 5. Runtime defaults: Node.js 24, Python 3.14, Go 1.26, Rust 2024. New: Pure HTML5 static website option
-- **v2.4** - Improved HTML support: fixed Tailwind CLI configuration (removed orphaned PostCSS config), refactored template methods to eliminate code duplication (added helper methods for CSS links, header, footer), improved code maintainability
-- **v2.3** - Fixed scaffold.py: NestJS typo (@nestjs/swtc → @nestjs/schematics), removed unused templates_dir, updated @types/node to v22
-- **v2.2** - Restructured skill with progressive disclosure, added comprehensive wizard-options.md covering all 70+ project types, updated version defaults (Node.js 22, Python 3.12, Go 1.23)
-- **v2.1** - Added HTML/CSS static websites, Go, Rust, Java backends, mobile frameworks, browser extensions, serverless
-- **v2.0** - Initial enhanced release with 40+ project types
-- **v1.0** - Basic web framework support
+Always repackage before committing — the `.skill` is what users install.
 
 ## License
 
-MIT
+MIT.
