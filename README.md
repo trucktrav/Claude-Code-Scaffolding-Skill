@@ -127,7 +127,7 @@ Claude-Code-Scaffolding-Skill/
   project-scaffolding/
     SKILL.md                       # Wizard workflow + trigger description
     scripts/
-      scaffold.py                  # Core engine (~750 lines, 17 creators)
+      scaffold.py                  # Core engine (~1800 lines, 17 creators)
     references/
       frameworks.md                # Per-type structure + code patterns
       wizard-options.md            # Detailed config options

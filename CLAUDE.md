@@ -11,7 +11,7 @@ A **Claude Code skill** for opinionated project scaffolding across Python, Go, w
 ```
 project-scaffolding/
 ├── SKILL.md                 # Skill definition — wizard workflow and trigger patterns
-├── scripts/scaffold.py      # Core scaffolding engine (~750 lines)
+├── scripts/scaffold.py      # Core scaffolding engine (~1800 lines)
 ├── references/
 │   ├── frameworks.md        # Project structures and code patterns per type
 │   ├── wizard-options.md    # Detailed config options per type
