@@ -1,44 +1,30 @@
 #!/usr/bin/env python3
+# ruff: noqa: S603, S607 — scaffold deliberately shells out to git/npm/npx
 """
-Project scaffolding script - IDE-grade project creation comparable to WebStorm/PyCharm.
-Supports comprehensive configuration options for modern development workflows.
+Project scaffolding engine — opinionated defaults for PBS stack.
+
+Supports 14 project types across Python, Go, and Web.
+Python: uv + Ruff + Pyright. Polars for data work. src/ layout.
+Go: standard cmd/internal/pkg layout with Makefile.
+Web: TypeScript by default, Tailwind for React/Astro.
+
+Every project gets: git init, first commit, CLAUDE.md, MIT license.
 """
 
-import os
-import sys
 import json
-import shutil
 import subprocess
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Configuration enums and dataclass
+# ---------------------------------------------------------------------------
 
 class Language(Enum):
-    TYPESCRIPT = "typescript"
-    JAVASCRIPT = "javascript"
     PYTHON = "python"
-
-
-class PackageManager(Enum):
-    NPM = "npm"
-    YARN = "yarn"
-    PNPM = "pnpm"
-    BUN = "bun"
-    PIP = "pip"
-    POETRY = "poetry"
-    PIPENV = "pipenv"
-    CONDA = "conda"
-
-
-class CSSFramework(Enum):
-    TAILWIND = "tailwind"
-    CSS_MODULES = "css-modules"
-    STYLED_COMPONENTS = "styled-components"
-    EMOTION = "emotion"
-    SCSS = "scss"
-    NONE = "none"
+    GO = "go"
+    TYPESCRIPT = "typescript"
 
 
 class Database(Enum):
@@ -46,65 +32,71 @@ class Database(Enum):
     SQLITE = "sqlite"
     POSTGRESQL = "postgresql"
     MYSQL = "mysql"
-    MONGODB = "mongodb"
 
 
-class ORM(Enum):
+class CSSFramework(Enum):
+    TAILWIND = "tailwind"
     NONE = "none"
-    PRISMA = "prisma"
-    DRIZZLE = "drizzle"
-    TYPEORM = "typeorm"
-    SEQUELIZE = "sequelize"
-    SQLALCHEMY = "sqlalchemy"
-    SQLMODEL = "sqlmodel"
-    TORTOISE = "tortoise"
-    MONGOOSE = "mongoose"
 
 
 @dataclass
 class ProjectConfig:
     """Configuration for a new project."""
+
     name: str
     project_type: str
-    language: Language = Language.TYPESCRIPT
+    language: Language = Language.PYTHON
     description: str = ""
     author: str = ""
     license: str = "MIT"
     version: str = "0.1.0"
 
     # SDK/Runtime
-    node_version: str = "24"
-    python_version: str = "3.14"
-    package_manager: PackageManager = PackageManager.NPM
+    python_version: str = "3.13"
+    go_version: str = "1.24"
+    node_version: str = "22"
 
     # Framework options
     css_framework: CSSFramework = CSSFramework.TAILWIND
     database: Database = Database.NONE
-    orm: ORM = ORM.NONE
 
     # Features
-    typescript_strict: bool = True
-    eslint: bool = True
-    prettier: bool = True
-    testing: bool = True
     docker: bool = False
     github_actions: bool = False
 
-    # Python-specific
-    type_hints: bool = True
-    ruff: bool = True
-    mypy: bool = True
-    pytest: bool = True
-
     # Additional features
-    features: List[str] = field(default_factory=list)
+    features: list[str] = field(default_factory=list)
 
+
+# ---------------------------------------------------------------------------
+# Ruff rule set — opinionated but not ALL
+# ---------------------------------------------------------------------------
+
+RUFF_RULES = [
+    "E4",   # pycodestyle import errors
+    "E7",   # pycodestyle statement errors
+    "E9",   # pycodestyle runtime errors
+    "F",    # pyflakes
+    "B",    # flake8-bugbear
+    "I",    # isort
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "S",    # flake8-bandit (security)
+    "SIM",  # flake8-simplify
+    "RET",  # flake8-return
+    "PTH",  # flake8-use-pathlib
+]
+
+
+# ---------------------------------------------------------------------------
+# Scaffolder
+# ---------------------------------------------------------------------------
 
 class ProjectScaffolder:
-    """Main scaffolding engine for creating projects with IDE-grade configuration."""
+    """Main scaffolding engine."""
 
-    def __init__(self, base_path: Path = Path.cwd()):
-        self.base_path = base_path
+    def __init__(self, base_path: Path | None = None):
+        self.base_path = base_path if base_path is not None else Path.cwd()
 
     def create_project(self, config: ProjectConfig) -> Path:
         """Create a new project from configuration."""
@@ -113,1333 +105,95 @@ class ProjectScaffolder:
         if project_path.exists():
             raise FileExistsError(f"Project {config.name} already exists")
 
-        # Map project types to creation methods
         creators = {
-            # Static Sites
+            # Static
             "html": self._create_html,
-            # Frontend
-            "react": self._create_react,
-            "nextjs": self._create_nextjs,
-            "vue": self._create_vue,
-            "nuxt": self._create_nuxt,
-            "svelte": self._create_svelte,
-            "angular": self._create_angular,
-            # Backend
-            "express": self._create_express,
-            "nestjs": self._create_nestjs,
+            # Python
             "fastapi": self._create_fastapi,
-            "django": self._create_django,
             "flask": self._create_flask,
-            # Libraries
-            "python": self._create_python,
-            "typescript": self._create_typescript_lib,
-            "cli": self._create_cli,
-            "electron": self._create_electron,
-            "monorepo": self._create_monorepo,
+            "python-cli": self._create_python_cli,
+            "python-lib": self._create_python_lib,
+            "python-data": self._create_python_data,
+            # Go
+            "go-gin": self._create_go_api,
+            "go-chi": self._create_go_api,
+            "go-cli": self._create_go_cli,
+            "go-module": self._create_go_module,
+            # Ansible
+            "ansible": self._create_ansible,
+            "ansible-role": self._create_ansible_role,
+            "ansible-docker-container": self._create_ansible_container,
+            # Web (CLI-delegated)
+            "react": self._create_react,
+            "astro": self._create_astro,
+            "hono": self._create_hono,
+            "t3": self._create_t3,
         }
 
         if config.project_type not in creators:
-            raise ValueError(f"Unknown project type: {config.project_type}")
+            raise ValueError(
+                f"Unknown project type: {config.project_type}. "
+                f"Valid types: {', '.join(sorted(creators.keys()))}"
+            )
 
         project_path.mkdir(parents=True)
         creators[config.project_type](project_path, config)
 
+        # Every project: git init + first commit + CLAUDE.md
+        self._git_init(project_path, config)
+
         return project_path
 
-    # =========================================================================
-    # Frontend Projects
-    # =========================================================================
-
-    def _create_react(self, path: Path, config: ProjectConfig):
-        """Create a React project with Vite."""
-        # Create directory structure
-        self._create_dirs(path, [
-            "src/components/ui",
-            "src/components/features",
-            "src/hooks",
-            "src/lib",
-            "src/types",
-            "src/styles",
-            "public",
-            "tests/unit",
-            "tests/e2e",
-        ])
-
-        # Package.json
-        ext = "tsx" if config.language == Language.TYPESCRIPT else "jsx"
-        deps = {
-            "react": "^19.2.0",
-            "react-dom": "^19.2.0",
-        }
-        dev_deps = {
-            "@vitejs/plugin-react": "^4.3.0",
-            "vite": "^7.0.0",
-        }
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps["typescript"] = "^5.8.0"
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            dev_deps["tailwindcss"] = "^4.1.0"
-
-        if config.eslint:
-            dev_deps.update({
-                "eslint": "^9.17.0",
-                "@eslint/js": "^9.17.0",
-                "eslint-plugin-react-hooks": "^5.0.0",
-            })
-            if config.language == Language.TYPESCRIPT:
-                dev_deps["typescript-eslint"] = "^8.18.0"
-
-        if config.prettier:
-            dev_deps["prettier"] = "^3.5.0"
-
-        if config.testing:
-            dev_deps.update({
-                "vitest": "^3.0.0",
-                "@testing-library/react": "^16.0.0",
-                "@testing-library/jest-dom": "^6.0.0",
-            })
-
-        # State management based on features
-        if "zustand" in config.features:
-            deps["zustand"] = "^5.0.0"
-        if "redux" in config.features:
-            deps["@reduxjs/toolkit"] = "^2.0.0"
-            deps["react-redux"] = "^9.0.0"
-
-        # Data fetching
-        if "tanstack-query" in config.features:
-            deps["@tanstack/react-query"] = "^5.0.0"
-
-        # Routing
-        if "react-router" in config.features:
-            deps["react-router-dom"] = "^7.0.0"
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "vite",
-            "build": "vite build",
-            "preview": "vite preview",
-            "lint": "eslint src --ext .ts,.tsx" if config.eslint else None,
-            "format": "prettier --write src" if config.prettier else None,
-            "test": "vitest" if config.testing else None,
-            "test:coverage": "vitest --coverage" if config.testing else None,
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Vite config
-        vite_config = self._generate_vite_config(config)
-        self._write_file(path / "vite.config.ts", vite_config)
-
-        # TypeScript config
-        if config.language == Language.TYPESCRIPT:
-            self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "react"))
-
-        # Tailwind config
-        if config.css_framework == CSSFramework.TAILWIND:
-            self._create_tailwind_config(path, config)
-
-        # ESLint config
-        if config.eslint:
-            self._create_eslint_config(path, config, "react")
-
-        # Prettier config
-        if config.prettier:
-            self._create_prettier_config(path)
-
-        # Source files
-        self._write_file(path / f"src/main.{ext}", self._react_main(config))
-        self._write_file(path / f"src/App.{ext}", self._react_app(config))
-        self._write_file(path / "src/styles/globals.css", self._css_globals(config))
-        self._write_file(path / "index.html", self._react_index_html(config))
-
-        # Vitest config
-        if config.testing:
-            self._write_file(path / "vitest.config.ts", self._vitest_config())
-            self._write_file(path / "tests/setup.ts", self._vitest_setup())
-
-        # Common files
-        self._create_common_files(path, config)
-
-    def _create_nextjs(self, path: Path, config: ProjectConfig):
-        """Create a Next.js project with App Router."""
-        # Directory structure
-        self._create_dirs(path, [
-            "src/app/(auth)/login",
-            "src/app/(auth)/register",
-            "src/app/api",
-            "src/components/ui",
-            "src/components/features",
-            "src/lib",
-            "src/hooks",
-            "src/types",
-            "public",
-            "tests/unit",
-            "tests/e2e",
-        ])
-
-        if config.orm == ORM.PRISMA:
-            self._create_dirs(path, ["prisma"])
-
-        deps = {
-            "next": "^16.0.0",
-            "react": "^19.2.0",
-            "react-dom": "^19.2.0",
-        }
-        dev_deps = {}
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "@types/node": "^22.0.0",
-            })
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            dev_deps["tailwindcss"] = "^4.1.0"
-
-        if config.eslint:
-            dev_deps.update({
-                "eslint": "^9.17.0",
-                "eslint-config-next": "^16.0.0",
-            })
-
-        if config.prettier:
-            dev_deps["prettier"] = "^3.5.0"
-            dev_deps["prettier-plugin-tailwindcss"] = "^0.6.0"
-
-        if config.testing:
-            dev_deps.update({
-                "vitest": "^3.0.0",
-                "@testing-library/react": "^16.0.0",
-                "@vitejs/plugin-react": "^4.3.0",
-            })
-
-        # ORM
-        if config.orm == ORM.PRISMA:
-            deps["@prisma/client"] = "^6.0.0"
-            dev_deps["prisma"] = "^6.0.0"
-
-        # Auth
-        if "nextauth" in config.features:
-            deps["next-auth"] = "^4.24.0"
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "next dev",
-            "build": "next build",
-            "start": "next start",
-            "lint": "next lint" if config.eslint else None,
-            "format": "prettier --write ." if config.prettier else None,
-            "test": "vitest" if config.testing else None,
-            "db:generate": "prisma generate" if config.orm == ORM.PRISMA else None,
-            "db:push": "prisma db push" if config.orm == ORM.PRISMA else None,
-            "db:migrate": "prisma migrate dev" if config.orm == ORM.PRISMA else None,
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Next.js config
-        self._write_file(path / "next.config.ts", self._nextjs_config(config))
-
-        # TypeScript config
-        if config.language == Language.TYPESCRIPT:
-            self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "nextjs"))
-
-        # Tailwind config
-        if config.css_framework == CSSFramework.TAILWIND:
-            self._create_tailwind_config(path, config, framework="nextjs")
-
-        # ESLint config
-        if config.eslint:
-            self._write_file(path / "eslint.config.js", """import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const compat = new FlatCompat({ baseDirectory: __dirname });
-
-export default [...compat.extends('next/core-web-vitals')];
-""")
-
-        # Prettier config
-        if config.prettier:
-            self._create_prettier_config(path, plugins=["prettier-plugin-tailwindcss"])
-
-        # App files
-        ext = "tsx" if config.language == Language.TYPESCRIPT else "jsx"
-        self._write_file(path / f"src/app/layout.{ext}", self._nextjs_layout(config))
-        self._write_file(path / f"src/app/page.{ext}", self._nextjs_page(config))
-        self._write_file(path / "src/app/globals.css", self._css_globals(config))
-
-        # Prisma schema
-        if config.orm == ORM.PRISMA:
-            self._write_file(path / "prisma/schema.prisma", self._prisma_schema(config))
-            self._write_file(path / "src/lib/db.ts", self._prisma_client())
-
-        # Lib utilities
-        self._write_file(path / "src/lib/utils.ts", self._utils_file())
-
-        # Common files
-        self._create_common_files(path, config)
-
-    def _create_vue(self, path: Path, config: ProjectConfig):
-        """Create a Vue 3 project with Vite."""
-        self._create_dirs(path, [
-            "src/components",
-            "src/composables",
-            "src/views",
-            "src/stores",
-            "src/assets",
-            "src/router",
-            "public",
-            "tests",
-        ])
-
-        deps = {"vue": "^3.5.0"}
-        dev_deps = {
-            "@vitejs/plugin-vue": "^5.2.0",
-            "vite": "^7.0.0",
-        }
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "vue-tsc": "^2.2.0",
-            })
-
-        if "pinia" in config.features:
-            deps["pinia"] = "^2.1.0"
-
-        if "vue-router" in config.features:
-            deps["vue-router"] = "^4.2.0"
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            dev_deps["tailwindcss"] = "^4.1.0"
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "vite",
-            "build": "vite build",
-            "preview": "vite preview",
-            "type-check": "vue-tsc --noEmit" if config.language == Language.TYPESCRIPT else None,
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Vite config
-        self._write_file(path / "vite.config.ts", self._vue_vite_config(config))
-
-        # TypeScript config
-        if config.language == Language.TYPESCRIPT:
-            self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "vue"))
-
-        # Source files
-        ext = "ts" if config.language == Language.TYPESCRIPT else "js"
-        self._write_file(path / f"src/main.{ext}", self._vue_main(config))
-        self._write_file(path / "src/App.vue", self._vue_app(config))
-        self._write_file(path / "index.html", self._vue_index_html(config))
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            self._create_tailwind_config(path, config)
-            self._write_file(path / "src/assets/main.css", self._css_globals(config))
-
-        self._create_common_files(path, config)
-
-    def _create_nuxt(self, path: Path, config: ProjectConfig):
-        """Create a Nuxt 3 project."""
-        self._create_dirs(path, [
-            "components",
-            "composables",
-            "layouts",
-            "pages",
-            "public",
-            "server/api",
-            "stores",
-        ])
-
-        deps = {}
-        dev_deps = {"nuxt": "^3.9.0"}
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            dev_deps["@nuxtjs/tailwindcss"] = "^6.10.0"
-
-        if "pinia" in config.features:
-            deps["@pinia/nuxt"] = "^0.5.0"
-            deps["pinia"] = "^2.1.0"
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "nuxt dev",
-            "build": "nuxt build",
-            "generate": "nuxt generate",
-            "preview": "nuxt preview",
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Nuxt config
-        self._write_file(path / "nuxt.config.ts", self._nuxt_config(config))
-
-        # Pages
-        self._write_file(path / "pages/index.vue", self._nuxt_index_page(config))
-        self._write_file(path / "app.vue", self._nuxt_app(config))
-
-        self._create_common_files(path, config)
-
-    def _create_svelte(self, path: Path, config: ProjectConfig):
-        """Create a SvelteKit project."""
-        self._create_dirs(path, [
-            "src/lib",
-            "src/lib/components",
-            "src/routes",
-            "static",
-            "tests",
-        ])
-
-        deps = {}
-        dev_deps = {
-            "@sveltejs/adapter-auto": "^4.0.0",
-            "@sveltejs/kit": "^2.0.0",
-            "svelte": "^5.0.0",
-            "vite": "^7.0.0",
-        }
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "svelte-check": "^4.1.0",
-                "tslib": "^2.6.0",
-            })
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            dev_deps["tailwindcss"] = "^4.1.0"
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "vite dev",
-            "build": "vite build",
-            "preview": "vite preview",
-            "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # SvelteKit config
-        self._write_file(path / "svelte.config.js", self._svelte_config(config))
-        self._write_file(path / "vite.config.ts", self._svelte_vite_config(config))
-
-        # Routes
-        ext = "ts" if config.language == Language.TYPESCRIPT else "js"
-        self._write_file(path / f"src/routes/+page.svelte", self._svelte_page(config))
-        self._write_file(path / f"src/routes/+layout.svelte", self._svelte_layout(config))
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            self._create_tailwind_config(path, config)
-            self._write_file(path / "src/app.css", self._css_globals(config))
-
-        self._write_file(path / "src/app.html", self._svelte_app_html(config))
-
-        self._create_common_files(path, config)
-
-    def _create_angular(self, path: Path, config: ProjectConfig):
-        """Create an Angular project structure (recommend using ng new)."""
-        # For Angular, we primarily recommend using the CLI
-        self._create_dirs(path, [
-            "src/app/components",
-            "src/app/services",
-            "src/app/models",
-            "src/app/pages",
-            "src/assets",
-            "src/environments",
-        ])
-
-        deps = {
-            "@angular/core": "^19.0.0",
-            "@angular/common": "^19.0.0",
-            "@angular/compiler": "^19.0.0",
-            "@angular/platform-browser": "^19.0.0",
-            "@angular/platform-browser-dynamic": "^19.0.0",
-            "@angular/router": "^19.0.0",
-            "rxjs": "^7.8.0",
-            "zone.js": "^0.15.0",
-        }
-        dev_deps = {
-            "@angular/cli": "^19.0.0",
-            "@angular/compiler-cli": "^19.0.0",
-            "typescript": "^5.8.0",
-        }
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "ng": "ng",
-            "start": "ng serve",
-            "build": "ng build",
-            "test": "ng test",
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Angular config
-        self._write_json(path / "angular.json", self._angular_config(config))
-        self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "angular"))
-
-        self._create_common_files(path, config)
-
-    # =========================================================================
-    # Static Websites
-    # =========================================================================
-
-    def _create_html(self, path: Path, config: ProjectConfig):
-        """Create a static HTML/CSS website."""
-        # Create directory structure
-        dirs = ["js", "images"]
-        if config.css_framework != CSSFramework.NONE:
-            dirs.insert(0, "css")
-        self._create_dirs(path, dirs)
-
-        # Main HTML file
-        self._write_file(path / "index.html", self._html_index(config))
-
-        # Additional pages
-        self._write_file(path / "about.html", self._html_about(config))
-        self._write_file(path / "contact.html", self._html_contact(config))
-
-        # CSS files (skip for pure HTML5)
-        if config.css_framework != CSSFramework.NONE:
-            self._write_file(path / "css/reset.css", self._css_reset())
-            self._write_file(path / "css/style.css", self._css_main(config))
-
-        # JavaScript
-        self._write_file(path / "js/main.js", self._js_main())
-
-        # Favicon and robots.txt
-        self._write_file(path / "robots.txt", "User-agent: *\nDisallow:\n")
-
-        # Package.json for dev server (optional)
-        if config.css_framework == CSSFramework.TAILWIND:
-            package_json = {
-                "name": config.name,
-                "version": config.version,
-                "description": config.description or "",
-                "scripts": {
-                    "dev": "npx @tailwindcss/cli -i ./css/style.css -o ./css/output.css --watch",
-                    "build": "npx @tailwindcss/cli -i ./css/style.css -o ./css/output.css --minify",
-                },
-                "devDependencies": {
-                    "@tailwindcss/cli": "^4.1.0"
-                }
-            }
-            self._write_json(path / "package.json", package_json)
-        else:
-            # Simple package.json for live server
-            package_json = {
-                "name": config.name,
-                "version": config.version,
-                "description": config.description or "",
-                "scripts": {
-                    "dev": "npx live-server",
-                },
-                "devDependencies": {
-                    "live-server": "^1.2.2"
-                }
-            }
-            self._write_json(path / "package.json", package_json)
-
-        # Create basic README
-        readme = f"""# {config.name}
-
-{config.description or 'A static HTML/CSS website'}
-
-## Development
-
-Start the development server:
-
-```bash
-npm install
-npm run dev
-```
-
-The site will be available at http://localhost:8080
-
-## Project Structure
-
-```
-{config.name}/
-├── index.html          # Home page
-├── about.html          # About page
-├── contact.html        # Contact page
-├── css/
-│   ├── reset.css       # CSS reset
-│   └── style.css       # Main styles
-├── js/
-│   └── main.js         # Main JavaScript
-├── images/             # Image assets
-└── robots.txt          # SEO
-```
-
-## Features
-
-- Mobile-first responsive design
-- BEM naming convention for CSS
-- Semantic HTML5
-- SEO-ready
-{'- Tailwind CSS' if config.css_framework == CSSFramework.TAILWIND else '- Pure HTML5 (no CSS)' if config.css_framework == CSSFramework.NONE else '- Pure CSS'}
-
-## Browser Support
-
-- Chrome (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
-
-## License
-
-{config.license}
-"""
-        self._write_file(path / "README.md", readme)
-
-        # .gitignore for HTML projects
-        gitignore = """# Dependencies
-node_modules/
-
-# Tailwind output
-css/output.css
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Editor
-.vscode/
-.idea/
-*.sublime-*
-
-# Logs
-*.log
-"""
-        self._write_file(path / ".gitignore", gitignore)
-
-    # =========================================================================
-    # Backend Projects
-    # =========================================================================
-
-    def _create_express(self, path: Path, config: ProjectConfig):
-        """Create an Express.js project."""
-        self._create_dirs(path, [
-            "src/routes",
-            "src/controllers",
-            "src/middleware",
-            "src/models",
-            "src/services",
-            "src/utils",
-            "src/config",
-            "tests",
-        ])
-
-        deps = {
-            "express": "^5.0.0",
-            "cors": "^2.8.0",
-            "helmet": "^7.1.0",
-            "morgan": "^1.10.0",
-            "dotenv": "^16.3.0",
-        }
-        dev_deps = {}
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "@types/node": "^22.0.0",
-                "@types/express": "^5.0.0",
-                "@types/cors": "^2.8.0",
-                "@types/morgan": "^1.9.0",
-                "ts-node": "^10.9.0",
-                "tsx": "^4.6.0",
-                "nodemon": "^3.0.0",
-            })
-
-        if config.orm == ORM.PRISMA:
-            deps["@prisma/client"] = "^6.0.0"
-            dev_deps["prisma"] = "^6.0.0"
-        elif config.orm == ORM.TYPEORM:
-            deps["typeorm"] = "^0.3.0"
-            deps["reflect-metadata"] = "^0.1.0"
-        elif config.orm == ORM.SEQUELIZE:
-            deps["sequelize"] = "^6.35.0"
-
-        if config.database == Database.POSTGRESQL:
-            deps["pg"] = "^8.11.0"
-        elif config.database == Database.MYSQL:
-            deps["mysql2"] = "^3.6.0"
-        elif config.database == Database.MONGODB:
-            deps["mongoose"] = "^8.0.0"
-
-        if "zod" in config.features:
-            deps["zod"] = "^3.22.0"
-
-        if "swagger" in config.features:
-            deps["swagger-ui-express"] = "^5.0.0"
-            deps["swagger-jsdoc"] = "^6.2.0"
-
-        if config.testing:
-            dev_deps.update({
-                "vitest": "^3.0.0",
-                "supertest": "^7.0.0",
-                "@types/supertest": "^6.0.0",
-            })
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "dev": "tsx watch src/index.ts" if config.language == Language.TYPESCRIPT else "nodemon src/index.js",
-            "build": "tsc" if config.language == Language.TYPESCRIPT else None,
-            "start": "node dist/index.js" if config.language == Language.TYPESCRIPT else "node src/index.js",
-            "lint": "eslint src" if config.eslint else None,
-            "test": "vitest" if config.testing else None,
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # TypeScript config
-        if config.language == Language.TYPESCRIPT:
-            self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "node"))
-
-        # Source files
-        ext = "ts" if config.language == Language.TYPESCRIPT else "js"
-        self._write_file(path / f"src/index.{ext}", self._express_index(config))
-        self._write_file(path / f"src/app.{ext}", self._express_app(config))
-        self._write_file(path / f"src/config/index.{ext}", self._express_config(config))
-        self._write_file(path / f"src/routes/index.{ext}", self._express_routes(config))
-        self._write_file(path / f"src/middleware/errorHandler.{ext}", self._express_error_handler(config))
-
-        self._create_common_files(path, config)
-
-    def _create_nestjs(self, path: Path, config: ProjectConfig):
-        """Create a NestJS project structure."""
-        self._create_dirs(path, [
-            "src/modules",
-            "src/common/decorators",
-            "src/common/filters",
-            "src/common/guards",
-            "src/common/interceptors",
-            "src/config",
-            "test",
-        ])
-
-        deps = {
-            "@nestjs/common": "^11.0.0",
-            "@nestjs/core": "^11.0.0",
-            "@nestjs/platform-express": "^11.0.0",
-            "reflect-metadata": "^0.1.0",
-            "rxjs": "^7.8.0",
-        }
-        dev_deps = {
-            "@nestjs/cli": "^11.0.0",
-            "@nestjs/schematics": "^11.0.0",
-            "@types/node": "^22.0.0",
-            "@types/express": "^5.0.0",
-            "typescript": "^5.8.0",
-            "ts-node": "^10.9.0",
-        }
-
-        if config.testing:
-            dev_deps.update({
-                "@nestjs/testing": "^11.0.0",
-                "jest": "^29.7.0",
-                "@types/jest": "^29.5.0",
-                "ts-jest": "^29.1.0",
-            })
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "start": "nest start",
-            "start:dev": "nest start --watch",
-            "start:debug": "nest start --debug --watch",
-            "build": "nest build",
-            "test": "jest" if config.testing else None,
-            "test:watch": "jest --watch" if config.testing else None,
-        })
-        self._write_json(path / "package.json", package_json)
-
-        # Nest CLI config
-        self._write_json(path / "nest-cli.json", {
-            "$schema": "https://json.schemastore.org/nest-cli",
-            "collection": "@nestjs/schematics",
-            "sourceRoot": "src"
-        })
-
-        # TypeScript config
-        self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "nestjs"))
-
-        # Source files
-        self._write_file(path / "src/main.ts", self._nestjs_main(config))
-        self._write_file(path / "src/app.module.ts", self._nestjs_app_module(config))
-        self._write_file(path / "src/app.controller.ts", self._nestjs_controller(config))
-        self._write_file(path / "src/app.service.ts", self._nestjs_service(config))
-
-        self._create_common_files(path, config)
-
-    def _create_fastapi(self, path: Path, config: ProjectConfig):
-        """Create a FastAPI project."""
-        # Determine structure based on features
-        if "large-scale" in config.features:
-            self._create_dirs(path, [
-                "app/api/v1/endpoints",
-                "app/core",
-                "app/models",
-                "app/schemas",
-                "app/services",
-                "app/db",
-                "tests/unit",
-                "tests/integration",
-                "alembic/versions",
-            ])
-        else:
-            self._create_dirs(path, [
-                "app/api",
-                "app/models",
-                "app/schemas",
-                "app/core",
-                "tests",
-            ])
-
-        # Requirements
-        requirements = [
-            "fastapi>=0.115.0",
-            "uvicorn[standard]>=0.34.0",
-            "pydantic>=2.10.0",
-            "pydantic-settings>=2.1.0",
-            "python-dotenv>=1.0.0",
-        ]
-
-        dev_requirements = []
-
-        if config.orm == ORM.SQLALCHEMY:
-            requirements.extend([
-                "sqlalchemy>=2.0.0",
-                "alembic>=1.13.0",
-            ])
-            if config.database == Database.POSTGRESQL:
-                requirements.append("asyncpg>=0.29.0")
-                requirements.append("psycopg2-binary>=2.9.0")
-            elif config.database == Database.MYSQL:
-                requirements.append("aiomysql>=0.2.0")
-            elif config.database == Database.SQLITE:
-                requirements.append("aiosqlite>=0.19.0")
-        elif config.orm == ORM.SQLMODEL:
-            requirements.append("sqlmodel>=0.0.14")
-
-        if "jwt" in config.features:
-            requirements.extend([
-                "python-jose[cryptography]>=3.3.0",
-                "passlib[bcrypt]>=1.7.0",
-            ])
-
-        if "celery" in config.features:
-            requirements.extend([
-                "celery>=5.3.0",
-                "redis>=5.0.0",
-            ])
-
-        if config.pytest:
-            dev_requirements.extend([
-                "pytest>=8.0.0",
-                "pytest-asyncio>=0.23.0",
-                "pytest-cov>=4.1.0",
-                "httpx>=0.28.0",
-            ])
-
-        if config.ruff:
-            dev_requirements.append("ruff>=0.9.0")
-
-        if config.mypy:
-            dev_requirements.append("mypy>=1.14.0")
-
-        # Write requirements
-        self._write_file(path / "requirements.txt", "\n".join(requirements))
-        if dev_requirements:
-            self._write_file(path / "requirements-dev.txt", "\n".join(dev_requirements))
-
-        # pyproject.toml
-        self._write_file(path / "pyproject.toml", self._fastapi_pyproject(config))
-
-        # Source files
-        self._write_file(path / "app/__init__.py", "")
-        self._write_file(path / "app/main.py", self._fastapi_main(config))
-        self._write_file(path / "app/core/__init__.py", "")
-        self._write_file(path / "app/core/config.py", self._fastapi_config(config))
-        self._write_file(path / "app/api/__init__.py", "")
-
-        if config.orm == ORM.SQLALCHEMY:
-            self._write_file(path / "app/db/__init__.py", "")
-            self._write_file(path / "app/db/session.py", self._fastapi_db_session(config))
-            self._write_file(path / "app/db/base.py", self._fastapi_db_base())
-            self._write_file(path / "alembic.ini", self._alembic_ini(config))
-            self._write_file(path / "alembic/env.py", self._alembic_env(config))
-
-        # Ruff config
-        if config.ruff:
-            self._write_file(path / "ruff.toml", self._ruff_config())
-
-        # Docker
-        if config.docker:
-            self._write_file(path / "Dockerfile", self._fastapi_dockerfile(config))
-            self._write_file(path / "docker-compose.yml", self._fastapi_docker_compose(config))
-
-        self._create_common_files(path, config, python=True)
-
-    def _create_django(self, path: Path, config: ProjectConfig):
-        """Create a Django project."""
-        project_name = config.name.replace("-", "_")
-
-        self._create_dirs(path, [
-            f"{project_name}/settings",
-            "apps/core",
-            "apps/users",
-            "static",
-            "media",
-            "templates",
-            "tests",
-        ])
-
-        requirements = [
-            "django>=5.1.0",
-            "python-dotenv>=1.0.0",
-            "django-environ>=0.11.0",
-        ]
-
-        if "drf" in config.features:
-            requirements.append("djangorestframework>=3.14.0")
-
-        if config.database == Database.POSTGRESQL:
-            requirements.append("psycopg2-binary>=2.9.0")
-
-        if "celery" in config.features:
-            requirements.extend([
-                "celery>=5.3.0",
-                "django-celery-beat>=2.5.0",
-                "redis>=5.0.0",
-            ])
-
-        self._write_file(path / "requirements.txt", "\n".join(requirements))
-
-        # Django settings
-        self._write_file(path / f"{project_name}/__init__.py", "")
-        self._write_file(path / f"{project_name}/settings/__init__.py", "from .base import *")
-        self._write_file(path / f"{project_name}/settings/base.py", self._django_settings_base(config, project_name))
-        self._write_file(path / f"{project_name}/settings/dev.py", self._django_settings_dev(config))
-        self._write_file(path / f"{project_name}/settings/prod.py", self._django_settings_prod(config))
-        self._write_file(path / f"{project_name}/urls.py", self._django_urls(config))
-        self._write_file(path / f"{project_name}/wsgi.py", self._django_wsgi(config, project_name))
-        self._write_file(path / f"{project_name}/asgi.py", self._django_asgi(config, project_name))
-
-        # manage.py
-        self._write_file(path / "manage.py", self._django_manage(config, project_name))
-
-        # Apps
-        self._write_file(path / "apps/__init__.py", "")
-        self._write_file(path / "apps/core/__init__.py", "")
-        self._write_file(path / "apps/users/__init__.py", "")
-
-        self._create_common_files(path, config, python=True)
-
-    def _create_flask(self, path: Path, config: ProjectConfig):
-        """Create a Flask project."""
-        self._create_dirs(path, [
-            "app/api",
-            "app/models",
-            "app/services",
-            "app/templates",
-            "app/static",
-            "tests",
-        ])
-
-        requirements = [
-            "flask>=3.0.0",
-            "python-dotenv>=1.0.0",
-        ]
-
-        if config.orm == ORM.SQLALCHEMY:
-            requirements.append("flask-sqlalchemy>=3.1.0")
-
-        self._write_file(path / "requirements.txt", "\n".join(requirements))
-
-        self._write_file(path / "app/__init__.py", self._flask_init(config))
-        self._write_file(path / "app/config.py", self._flask_config(config))
-        self._write_file(path / "run.py", self._flask_run(config))
-
-        self._create_common_files(path, config, python=True)
-
-    # =========================================================================
-    # Library/Tool Projects
-    # =========================================================================
-
-    def _create_python(self, path: Path, config: ProjectConfig):
-        """Create a Python package/library."""
-        package_name = config.name.replace("-", "_")
-
-        self._create_dirs(path, [
-            f"src/{package_name}",
-            "tests",
-            "docs",
-        ])
-
-        # pyproject.toml
-        self._write_file(path / "pyproject.toml", self._python_pyproject(config, package_name))
-
-        # Package files
-        self._write_file(path / f"src/{package_name}/__init__.py", f'"""{ config.description or config.name }"""\n\n__version__ = "{config.version}"\n')
-        self._write_file(path / f"src/{package_name}/main.py", self._python_main(config))
-
-        # Tests
-        self._write_file(path / "tests/__init__.py", "")
-        self._write_file(path / "tests/test_main.py", self._python_test(config, package_name))
-
-        if config.ruff:
-            self._write_file(path / "ruff.toml", self._ruff_config())
-
-        self._create_common_files(path, config, python=True)
-
-    def _create_typescript_lib(self, path: Path, config: ProjectConfig):
-        """Create a TypeScript library/package."""
-        self._create_dirs(path, [
-            "src",
-            "tests",
-            "dist",
-        ])
-
-        deps = {}
-        dev_deps = {
-            "typescript": "^5.8.0",
-            "tsup": "^8.0.0",
-        }
-
-        if config.testing:
-            dev_deps["vitest"] = "^3.0.0"
-
-        if config.eslint:
-            dev_deps.update({
-                "eslint": "^9.17.0",
-                "@eslint/js": "^9.17.0",
-                "typescript-eslint": "^8.18.0",
-            })
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "build": "tsup",
-            "dev": "tsup --watch",
-            "test": "vitest" if config.testing else None,
-            "lint": "eslint src" if config.eslint else None,
-            "prepublishOnly": "npm run build",
-        })
-        package_json["main"] = "./dist/index.js"
-        package_json["module"] = "./dist/index.mjs"
-        package_json["types"] = "./dist/index.d.ts"
-        package_json["exports"] = {
-            ".": {
-                "require": "./dist/index.js",
-                "import": "./dist/index.mjs",
-                "types": "./dist/index.d.ts"
-            }
-        }
-        package_json["files"] = ["dist"]
-
-        self._write_json(path / "package.json", package_json)
-
-        # tsconfig
-        self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "library"))
-
-        # tsup config
-        self._write_file(path / "tsup.config.ts", self._tsup_config())
-
-        # Source files
-        self._write_file(path / "src/index.ts", f'export const hello = (name: string): string => `Hello, ${{name}}!`;\n')
-
-        if config.testing:
-            self._write_file(path / "tests/index.test.ts", "import { describe, it, expect } from 'vitest';\nimport { hello } from '../src';\n\ndescribe('hello', () => {\n  it('should greet', () => {\n    expect(hello('World')).toBe('Hello, World!');\n  });\n});\n")
-
-        self._create_common_files(path, config)
-
-    def _create_cli(self, path: Path, config: ProjectConfig):
-        """Create a CLI tool project."""
-        if config.language == Language.PYTHON:
-            self._create_python_cli(path, config)
-        else:
-            self._create_node_cli(path, config)
-
-    def _create_python_cli(self, path: Path, config: ProjectConfig):
-        """Create a Python CLI with Click or Typer."""
-        package_name = config.name.replace("-", "_")
-
-        self._create_dirs(path, [
-            f"src/{package_name}/commands",
-            "tests",
-        ])
-
-        requirements = [
-            "typer[all]>=0.9.0",
-            "rich>=13.7.0",
-        ]
-
-        self._write_file(path / "requirements.txt", "\n".join(requirements))
-        self._write_file(path / "pyproject.toml", self._python_cli_pyproject(config, package_name))
-
-        self._write_file(path / f"src/{package_name}/__init__.py", f'__version__ = "{config.version}"\n')
-        self._write_file(path / f"src/{package_name}/__main__.py", f"from {package_name}.cli import app\n\nif __name__ == '__main__':\n    app()\n")
-        self._write_file(path / f"src/{package_name}/cli.py", self._python_cli_main(config, package_name))
-
-        self._create_common_files(path, config, python=True)
-
-    def _create_node_cli(self, path: Path, config: ProjectConfig):
-        """Create a Node.js CLI tool."""
-        self._create_dirs(path, [
-            "src/commands",
-            "tests",
-        ])
-
-        deps = {
-            "commander": "^13.0.0",
-            "chalk": "^5.3.0",
-            "ora": "^8.0.0",
-        }
-        dev_deps = {}
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "@types/node": "^22.0.0",
-                "tsup": "^8.0.0",
-            })
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "build": "tsup",
-            "dev": "tsup --watch",
-            "start": "node dist/cli.js",
-        })
-        package_json["bin"] = {config.name: "./dist/cli.js"}
-        package_json["type"] = "module"
-
-        self._write_json(path / "package.json", package_json)
-
-        if config.language == Language.TYPESCRIPT:
-            self._write_json(path / "tsconfig.json", self._create_tsconfig(config, "node"))
-            self._write_file(path / "tsup.config.ts", self._cli_tsup_config(config))
-
-        ext = "ts" if config.language == Language.TYPESCRIPT else "js"
-        self._write_file(path / f"src/cli.{ext}", self._node_cli_main(config))
-
-        self._create_common_files(path, config)
-
-    def _create_electron(self, path: Path, config: ProjectConfig):
-        """Create an Electron desktop application."""
-        self._create_dirs(path, [
-            "src/main",
-            "src/renderer",
-            "src/preload",
-            "resources",
-        ])
-
-        deps = {}
-        dev_deps = {
-            "electron": "^35.0.0",
-            "electron-builder": "^24.9.0",
-        }
-
-        if config.language == Language.TYPESCRIPT:
-            dev_deps.update({
-                "typescript": "^5.8.0",
-                "@types/node": "^22.0.0",
-            })
-
-        package_json = self._create_package_json(config, deps, dev_deps, {
-            "start": "electron .",
-            "build": "electron-builder",
-        })
-        package_json["main"] = "src/main/index.js"
-
-        self._write_json(path / "package.json", package_json)
-
-        ext = "ts" if config.language == Language.TYPESCRIPT else "js"
-        self._write_file(path / f"src/main/index.{ext}", self._electron_main(config))
-        self._write_file(path / f"src/preload/preload.{ext}", self._electron_preload(config))
-        self._write_file(path / "src/renderer/index.html", self._electron_html(config))
-
-        self._create_common_files(path, config)
-
-    def _create_monorepo(self, path: Path, config: ProjectConfig):
-        """Create a monorepo structure."""
-        self._create_dirs(path, [
-            "packages",
-            "apps",
-            ".github/workflows",
-        ])
-
-        # Root package.json for pnpm/npm workspaces
-        package_json = {
-            "name": config.name,
-            "private": True,
-            "workspaces": ["packages/*", "apps/*"],
-            "scripts": {
-                "build": "turbo build",
-                "dev": "turbo dev",
-                "lint": "turbo lint",
-                "test": "turbo test",
-            },
-            "devDependencies": {
-                "turbo": "^2.0.0",
-            }
-        }
-        self._write_json(path / "package.json", package_json)
-
-        # Turbo config
-        self._write_json(path / "turbo.json", {
-            "$schema": "https://turbo.build/schema.json",
-            "globalDependencies": ["**/.env.*local"],
-            "tasks": {
-                "build": {
-                    "dependsOn": ["^build"],
-                    "outputs": ["dist/**", ".next/**"]
-                },
-                "dev": {
-                    "cache": False,
-                    "persistent": True
-                },
-                "lint": {},
-                "test": {}
-            }
-        })
-
-        # pnpm workspace
-        self._write_file(path / "pnpm-workspace.yaml", "packages:\n  - 'packages/*'\n  - 'apps/*'\n")
-
-        self._create_common_files(path, config)
-
-    # =========================================================================
-    # Helper Methods
-    # =========================================================================
-
-    def _create_dirs(self, path: Path, dirs: List[str]):
-        """Create directory structure."""
+    # =====================================================================
+    # Utility methods
+    # =====================================================================
+
+    def _create_dirs(self, path: Path, dirs: list[str]) -> None:
         for d in dirs:
             (path / d).mkdir(parents=True, exist_ok=True)
 
-    def _write_file(self, path: Path, content: str):
-        """Write content to a file."""
+    def _write_file(self, path: Path, content: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
 
-    def _write_json(self, path: Path, data: dict):
-        """Write JSON to a file."""
+    def _write_json(self, path: Path, data: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(data, f, indent=2)
+        path.write_text(json.dumps(data, indent=2) + "\n")
 
-    def _create_package_json(self, config: ProjectConfig, deps: dict, dev_deps: dict, scripts: dict) -> dict:
-        """Create a package.json structure."""
-        return {
-            "name": config.name,
-            "version": config.version,
-            "description": config.description or f"{config.name} project",
-            "author": config.author,
-            "license": config.license,
-            "scripts": {k: v for k, v in scripts.items() if v is not None},
-            "dependencies": deps,
-            "devDependencies": dev_deps,
-        }
+    def _git_init(self, path: Path, config: ProjectConfig) -> None:
+        """Initialize git repo and create first commit."""
+        try:
+            subprocess.run(["git", "init"], cwd=path, capture_output=True, check=True)  # noqa: S603, S607
+            subprocess.run(["git", "add", "."], cwd=path, capture_output=True, check=True)  # noqa: S603, S607
+            subprocess.run(  # noqa: S603, S607
+                ["git", "commit", "-m", f"Initial scaffold: {config.project_type} project"],
+                cwd=path,
+                capture_output=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass  # git not available — skip silently
 
-    def _create_tsconfig(self, config: ProjectConfig, framework: str) -> dict:
-        """Create TypeScript configuration."""
-        base = {
-            "compilerOptions": {
-                "target": "ES2022",
-                "module": "ESNext",
-                "moduleResolution": "bundler",
-                "esModuleInterop": True,
-                "skipLibCheck": True,
-                "forceConsistentCasingInFileNames": True,
-                "strict": config.typescript_strict,
-            }
-        }
+    # =====================================================================
+    # Common file generators
+    # =====================================================================
 
-        if framework == "react":
-            base["compilerOptions"].update({
-                "lib": ["DOM", "DOM.Iterable", "ES2022"],
-                "jsx": "react-jsx",
-                "baseUrl": ".",
-                "paths": {"@/*": ["./src/*"]},
-            })
-            base["include"] = ["src"]
-        elif framework == "nextjs":
-            base["compilerOptions"].update({
-                "lib": ["DOM", "DOM.Iterable", "ES2022"],
-                "jsx": "preserve",
-                "incremental": True,
-                "plugins": [{"name": "next"}],
-                "baseUrl": ".",
-                "paths": {"@/*": ["./src/*"]},
-            })
-            base["include"] = ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"]
-            base["exclude"] = ["node_modules"]
-        elif framework == "vue":
-            base["compilerOptions"].update({
-                "lib": ["DOM", "ES2022"],
-                "jsx": "preserve",
-                "baseUrl": ".",
-                "paths": {"@/*": ["./src/*"]},
-            })
-            base["include"] = ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
-        elif framework == "node":
-            base["compilerOptions"].update({
-                "module": "CommonJS",
-                "moduleResolution": "node",
-                "outDir": "./dist",
-                "rootDir": "./src",
-                "declaration": True,
-            })
-            base["include"] = ["src"]
-            base["exclude"] = ["node_modules", "dist"]
-        elif framework == "library":
-            base["compilerOptions"].update({
-                "declaration": True,
-                "declarationMap": True,
-                "sourceMap": True,
-                "outDir": "./dist",
-            })
-            base["include"] = ["src"]
-        elif framework == "nestjs":
-            base["compilerOptions"].update({
-                "module": "CommonJS",
-                "declaration": True,
-                "removeComments": True,
-                "emitDecoratorMetadata": True,
-                "experimentalDecorators": True,
-                "allowSyntheticDefaultImports": True,
-                "sourceMap": True,
-                "outDir": "./dist",
-                "baseUrl": "./",
-                "incremental": True,
-            })
-        elif framework == "angular":
-            base["compilerOptions"].update({
-                "outDir": "./dist/out-tsc",
-                "sourceMap": True,
-                "declaration": False,
-                "downlevelIteration": True,
-                "experimentalDecorators": True,
-                "moduleResolution": "node",
-                "importHelpers": True,
-                "lib": ["ES2022", "dom"],
-            })
-
-        return base
-
-    def _create_common_files(self, path: Path, config: ProjectConfig, python: bool = False):
-        """Create common project files."""
-        # .gitignore
-        if python:
-            gitignore = """# Python
+    def _python_gitignore(self) -> str:
+        return """# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
 .venv/
-ENV/
-.env
-build/
-dist/
 *.egg-info/
+dist/
+build/
 .pytest_cache/
 .coverage
 htmlcov/
-.mypy_cache/
 .ruff_cache/
+.pyright/
 
 # IDE
 .vscode/
@@ -1451,11 +205,45 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Project
+# Environment
+.env
 *.log
 """
-        else:
-            gitignore = """# Dependencies
+
+    def _go_gitignore(self) -> str:
+        return """# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+
+# Test
+*.test
+*.out
+coverage.txt
+
+# Vendor (optional)
+# vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+*.log
+"""
+
+    def _web_gitignore(self) -> str:
+        return """# Dependencies
 node_modules/
 
 # Build
@@ -1463,6 +251,7 @@ dist/
 build/
 .next/
 out/
+.astro/
 
 # Environment
 .env
@@ -1485,1040 +274,372 @@ coverage/
 # Logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 """
-        self._write_file(path / ".gitignore", gitignore)
 
-        # .env.example
-        if python:
-            env_example = """# Environment
-DEBUG=true
-LOG_LEVEL=debug
+    def _claude_md(self, config: ProjectConfig) -> str:
+        """Generate CLAUDE.md for the scaffolded project."""
+        lines = [
+            f"# {config.name}",
+            "",
+            f"{config.description or 'Project description.'}",
+            "",
+        ]
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+        if config.language == Language.PYTHON:
+            lines.extend([
+                "## Development",
+                "",
+                "```bash",
+                "uv sync           # install deps",
+                "uv run ruff check --fix .   # lint + fix",
+                "uv run ruff format .        # format",
+                "uv run pyright              # type check",
+                "uv run pytest               # test",
+                "```",
+                "",
+                "## Validation",
+                "",
+                "Run the zero-check gauntlet after any code change:",
+                "```bash",
+                "~/zero-check-pipeline/validate/run-all.sh .",
+                "```",
+            ])
+        elif config.language == Language.GO:
+            lines.extend([
+                "## Development",
+                "",
+                "```bash",
+                "make build    # build binary",
+                "make test     # run tests",
+                "make lint     # golangci-lint",
+                "make run      # build and run",
+                "```",
+                "",
+                "## Validation",
+                "",
+                "Run the zero-check gauntlet after any code change:",
+                "```bash",
+                "~/zero-check-pipeline/validate/run-all.sh .",
+                "```",
+            ])
+        elif config.language == Language.TYPESCRIPT:
+            lines.extend([
+                "## Development",
+                "",
+                "```bash",
+                "pnpm install   # install deps",
+                "pnpm dev       # dev server",
+                "pnpm build     # production build",
+                "pnpm lint      # ESLint",
+                "pnpm test      # tests",
+                "```",
+            ])
 
-# Security
-SECRET_KEY=your-secret-key-here
+        return "\n".join(lines) + "\n"
+
+    def _ansible_claude_md(self, config: ProjectConfig) -> str:
+        """Generate CLAUDE.md for Ansible projects."""
+        return f"""# {config.name}
+
+{config.description or 'Ansible project.'}
+
+## Development
+
+```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+```
 """
-        else:
-            env_example = """# Environment
-NODE_ENV=development
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+    def _license_mit(self, config: ProjectConfig) -> str:
+        return f"""MIT License
 
-# API
-API_URL=http://localhost:3000
+Copyright (c) 2026 {config.author or config.name}
 
-# Auth
-NEXTAUTH_SECRET=your-secret-key
-NEXTAUTH_URL=http://localhost:3000
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 """
-        self._write_file(path / ".env.example", env_example)
 
-        # README.md
-        readme = f"""# {config.name}
+    def _readme(self, config: ProjectConfig, install_steps: str, dev_steps: str) -> str:
+        return f"""# {config.name}
 
-{config.description or 'Project description'}
+{config.description or 'Project description.'}
 
 ## Getting Started
 
-### Prerequisites
-
-"""
-        if python:
-            readme += f"""- Python {config.python_version}+
-
 ### Installation
 
-```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Unix
-# .venv\\Scripts\\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy environment file
-cp .env.example .env
-```
+{install_steps}
 
 ### Development
 
-```bash
-# Run development server
-uvicorn app.main:app --reload  # FastAPI
-# python manage.py runserver  # Django
-```
+{dev_steps}
 
-### Testing
-
-```bash
-pytest
-```
-"""
-        else:
-            readme += f"""- Node.js {config.node_version}+
-- {config.package_manager.value}
-
-### Installation
-
-```bash
-# Install dependencies
-{config.package_manager.value} install
-
-# Copy environment file
-cp .env.example .env.local
-```
-
-### Development
-
-```bash
-{config.package_manager.value} run dev
-```
-
-### Building
-
-```bash
-{config.package_manager.value} run build
-```
-
-### Testing
-
-```bash
-{config.package_manager.value} run test
-```
-"""
-        readme += f"""
 ## License
 
 {config.license}
 """
-        self._write_file(path / "README.md", readme)
 
-        # VS Code settings
-        if config.eslint or config.prettier or config.ruff:
-            vscode_settings = {}
-            if config.eslint:
-                vscode_settings["editor.codeActionsOnSave"] = {"source.fixAll.eslint": "explicit"}
-            if config.prettier:
-                vscode_settings["editor.defaultFormatter"] = "esbenp.prettier-vscode"
-                vscode_settings["editor.formatOnSave"] = True
-            if config.ruff:
-                vscode_settings["[python]"] = {
-                    "editor.defaultFormatter": "charliermarsh.ruff",
-                    "editor.formatOnSave": True,
-                    "editor.codeActionsOnSave": {"source.fixAll.ruff": "explicit"}
-                }
+    def _ruff_toml(self, config: ProjectConfig, first_party: str = "app") -> str:
+        rules_str = ", ".join(f'"{r}"' for r in RUFF_RULES)
+        return f"""line-length = 100
+target-version = "py{config.python_version.replace('.', '')}"
 
-            (path / ".vscode").mkdir(exist_ok=True)
-            self._write_json(path / ".vscode/settings.json", vscode_settings)
+[lint]
+select = [{rules_str}]
 
-        # GitHub Actions
-        if config.github_actions:
-            self._create_github_actions(path, config, python)
+[lint.per-file-ignores]
+"tests/**" = ["S101", "INP001"]
 
-        # Docker
-        if config.docker and not python:
-            self._create_node_docker(path, config)
-
-    def _create_tailwind_config(self, path: Path, config: ProjectConfig, framework: str = "react"):
-        """Tailwind CSS v4 uses CSS-first configuration — no JS config files needed."""
-        pass
-
-    def _create_eslint_config(self, path: Path, config: ProjectConfig, framework: str):
-        """Create ESLint flat configuration (eslint.config.js)."""
-        imports = ["import js from '@eslint/js';"]
-        config_items = ["js.configs.recommended"]
-
-        if config.language == Language.TYPESCRIPT:
-            imports.append("import tseslint from 'typescript-eslint';")
-            config_items.append("...tseslint.configs.recommended")
-
-        if framework == "react":
-            imports.append("import reactHooks from 'eslint-plugin-react-hooks';")
-            config_items.append("""  {
-    plugins: {
-      'react-hooks': reactHooks,
-    },
-    rules: {
-      ...reactHooks.configs.recommended.rules,
-    },
-  }""")
-
-        config_content = "\n".join(imports) + "\n\n"
-        config_content += "export default [\n"
-        for item in config_items:
-            if item.startswith("  {"):
-                config_content += item + ",\n"
-            else:
-                config_content += f"  {item},\n"
-        config_content += "];\n"
-
-        self._write_file(path / "eslint.config.js", config_content)
-
-    def _create_prettier_config(self, path: Path, plugins: List[str] = None):
-        """Create Prettier configuration."""
-        config = {
-            "semi": True,
-            "singleQuote": True,
-            "tabWidth": 2,
-            "trailingComma": "es5",
-            "printWidth": 100,
-        }
-        if plugins:
-            config["plugins"] = plugins
-        self._write_json(path / ".prettierrc", config)
-
-    def _create_github_actions(self, path: Path, config: ProjectConfig, python: bool):
-        """Create GitHub Actions workflow."""
-        (path / ".github/workflows").mkdir(parents=True, exist_ok=True)
-
-        if python:
-            workflow = f"""name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '{config.python_version}'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-
-      - name: Lint with ruff
-        run: ruff check .
-
-      - name: Type check with mypy
-        run: mypy .
-
-      - name: Test with pytest
-        run: pytest --cov
-"""
-        else:
-            workflow = f"""name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '{config.node_version}'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Type check
-        run: npm run type-check
-
-      - name: Test
-        run: npm run test
-
-      - name: Build
-        run: npm run build
-"""
-        self._write_file(path / ".github/workflows/ci.yml", workflow)
-
-    def _create_node_docker(self, path: Path, config: ProjectConfig):
-        """Create Docker configuration for Node.js projects."""
-        dockerfile = f"""FROM node:{config.node_version}-alpine AS base
-
-# Install dependencies only when needed
-FROM base AS deps
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-
-# Build the application
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-RUN npm run build
-
-# Production image
-FROM base AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
-"""
-        self._write_file(path / "Dockerfile", dockerfile)
-
-        docker_compose = """services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - .:/app
-      - /app/node_modules
-"""
-        self._write_file(path / "docker-compose.yml", docker_compose)
-
-    # =========================================================================
-    # Template Content Methods (simplified - full implementation would be longer)
-    # =========================================================================
-
-    def _generate_vite_config(self, config: ProjectConfig) -> str:
-        return """import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-});
+[lint.isort]
+known-first-party = ["{first_party}"]
 """
 
-    def _react_main(self, config: ProjectConfig) -> str:
-        ext = "tsx" if config.language == Language.TYPESCRIPT else "jsx"
-        return f"""import {{ StrictMode }} from 'react';
-import {{ createRoot }} from 'react-dom/client';
-import App from './App';
-import './styles/globals.css';
+    def _pyproject_python(
+        self,
+        config: ProjectConfig,
+        package_name: str,
+        deps: list[str] | None = None,
+        scripts: dict[str, str] | None = None,
+        extra_sections: str = "",
+    ) -> str:
+        """Generate a pyproject.toml for Python projects using uv + hatchling."""
+        deps_str = ""
+        if deps:
+            deps_str = "\n".join(f'    "{d}",' for d in deps)
+            deps_str = f"\n{deps_str}\n"
+
+        scripts_str = ""
+        if scripts:
+            entries = "\n".join(f'{k} = "{v}"' for k, v in scripts.items())
+            scripts_str = f"\n[project.scripts]\n{entries}\n"
 
-createRoot(document.getElementById('root'){'!' if config.language == Language.TYPESCRIPT else ''}).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
-"""
-
-    def _react_app(self, config: ProjectConfig) -> str:
-        return """function App() {
-  return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900">Welcome</h1>
-        <p className="mt-2 text-gray-600">Your app is ready!</p>
-      </div>
-    </div>
-  );
-}
-
-export default App;
-"""
-
-    def _css_globals(self, config: ProjectConfig) -> str:
-        if config.css_framework == CSSFramework.TAILWIND:
-            return """@import "tailwindcss";
-"""
-        return """* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-}
-"""
-
-    def _react_index_html(self, config: ProjectConfig) -> str:
-        return f"""<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{config.name}</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.{'tsx' if config.language == Language.TYPESCRIPT else 'jsx'}"></script>
-  </body>
-</html>
-"""
-
-    def _vitest_config(self) -> str:
-        return """import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: './tests/setup.ts',
-  },
-});
-"""
-
-    def _vitest_setup(self) -> str:
-        return """import '@testing-library/jest-dom';
-"""
-
-    def _nextjs_config(self, config: ProjectConfig) -> str:
-        return """import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  reactStrictMode: true,
-};
-
-export default nextConfig;
-"""
-
-    def _nextjs_layout(self, config: ProjectConfig) -> str:
-        return f"""import type {{ Metadata }} from 'next';
-import './globals.css';
-
-export const metadata: Metadata = {{
-  title: '{config.name}',
-  description: '{config.description or "Generated by Next.js"}',
-}};
-
-export default function RootLayout({{
-  children,
-}}: {{
-  children: React.ReactNode;
-}}) {{
-  return (
-    <html lang="en">
-      <body>{{children}}</body>
-    </html>
-  );
-}}
-"""
-
-    def _nextjs_page(self, config: ProjectConfig) -> str:
-        return """export default function Home() {
-  return (
-    <main className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold">Welcome</h1>
-        <p className="mt-2 text-gray-600">Your Next.js app is ready!</p>
-      </div>
-    </main>
-  );
-}
-"""
-
-    def _prisma_schema(self, config: ProjectConfig) -> str:
-        provider = "postgresql" if config.database == Database.POSTGRESQL else "sqlite"
-        return f"""generator client {{
-  provider = "prisma-client-js"
-}}
-
-datasource db {{
-  provider = "{provider}"
-  url      = env("DATABASE_URL")
-}}
-
-model User {{
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}}
-"""
-
-    def _prisma_client(self) -> str:
-        return """import { PrismaClient } from '@prisma/client';
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-export const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-
-export default prisma;
-"""
-
-    def _utils_file(self) -> str:
-        return """import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-"""
-
-    def _vue_vite_config(self, config: ProjectConfig) -> str:
-        return """import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import path from 'path';
-
-export default defineConfig({
-  plugins: [vue()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-});
-"""
-
-    def _vue_main(self, config: ProjectConfig) -> str:
-        imports = ["import { createApp } from 'vue';", "import App from './App.vue';"]
-        setup = ["const app = createApp(App);"]
-
-        if "pinia" in config.features:
-            imports.append("import { createPinia } from 'pinia';")
-            setup.append("app.use(createPinia());")
-
-        if "vue-router" in config.features:
-            imports.append("import router from './router';")
-            setup.append("app.use(router);")
-
-        if config.css_framework == CSSFramework.TAILWIND:
-            imports.append("import './assets/main.css';")
-
-        setup.append("app.mount('#app');")
-
-        return "\n".join(imports) + "\n\n" + "\n".join(setup) + "\n"
-
-    def _vue_app(self, config: ProjectConfig) -> str:
-        return """<script setup lang="ts">
-</script>
-
-<template>
-  <div class="min-h-screen bg-gray-100 flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-4xl font-bold text-gray-900">Welcome</h1>
-      <p class="mt-2 text-gray-600">Your Vue app is ready!</p>
-    </div>
-  </div>
-</template>
-"""
-
-    def _vue_index_html(self, config: ProjectConfig) -> str:
-        return f"""<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{config.name}</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.{'ts' if config.language == Language.TYPESCRIPT else 'js'}"></script>
-  </body>
-</html>
-"""
-
-    def _nuxt_config(self, config: ProjectConfig) -> str:
-        modules = []
-        if config.css_framework == CSSFramework.TAILWIND:
-            modules.append("'@nuxtjs/tailwindcss'")
-        if "pinia" in config.features:
-            modules.append("'@pinia/nuxt'")
-
-        return f"""export default defineNuxtConfig({{
-  devtools: {{ enabled: true }},
-  modules: [{', '.join(modules)}],
-}});
-"""
-
-    def _nuxt_index_page(self, config: ProjectConfig) -> str:
-        return """<template>
-  <div class="min-h-screen bg-gray-100 flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-4xl font-bold text-gray-900">Welcome</h1>
-      <p class="mt-2 text-gray-600">Your Nuxt app is ready!</p>
-    </div>
-  </div>
-</template>
-"""
-
-    def _nuxt_app(self, config: ProjectConfig) -> str:
-        return """<template>
-  <NuxtPage />
-</template>
-"""
-
-    def _svelte_config(self, config: ProjectConfig) -> str:
-        return """import adapter from '@sveltejs/adapter-auto';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
-
-/** @type {import('@sveltejs/kit').Config} */
-const config = {
-  preprocess: vitePreprocess(),
-  kit: {
-    adapter: adapter(),
-  },
-};
-
-export default config;
-"""
-
-    def _svelte_vite_config(self, config: ProjectConfig) -> str:
-        return """import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
-
-export default defineConfig({
-  plugins: [sveltekit()],
-});
-"""
-
-    def _svelte_page(self, config: ProjectConfig) -> str:
-        return """<script lang="ts">
-</script>
-
-<div class="min-h-screen bg-gray-100 flex items-center justify-center">
-  <div class="text-center">
-    <h1 class="text-4xl font-bold text-gray-900">Welcome</h1>
-    <p class="mt-2 text-gray-600">Your SvelteKit app is ready!</p>
-  </div>
-</div>
-"""
-
-    def _svelte_layout(self, config: ProjectConfig) -> str:
-        css_import = "\n  import '../app.css';" if config.css_framework == CSSFramework.TAILWIND else ""
-        return f"""<script>{css_import}
-  let {{ children }} = $props();
-</script>
-
-{{@render children()}}
-"""
-
-    def _svelte_app_html(self, config: ProjectConfig) -> str:
-        return f"""<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%sveltekit.assets%/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    %sveltekit.head%
-  </head>
-  <body data-sveltekit-preload-data="hover">
-    <div style="display: contents">%sveltekit.body%</div>
-  </body>
-</html>
-"""
-
-    def _angular_config(self, config: ProjectConfig) -> dict:
-        return {
-            "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
-            "version": 1,
-            "newProjectRoot": "projects",
-            "projects": {
-                config.name: {
-                    "projectType": "application",
-                    "root": "",
-                    "sourceRoot": "src",
-                    "architect": {}
-                }
-            }
-        }
-
-    def _express_index(self, config: ProjectConfig) -> str:
-        return """import app from './app';
-import { config } from './config';
-
-const PORT = config.port || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-"""
-
-    def _express_app(self, config: ProjectConfig) -> str:
-        return """import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import routes from './routes';
-import { errorHandler } from './middleware/errorHandler';
-
-const app = express();
-
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(morgan('dev'));
-app.use(express.json());
-
-// Routes
-app.use('/api', routes);
-
-// Error handling
-app.use(errorHandler);
-
-export default app;
-"""
-
-    def _express_config(self, config: ProjectConfig) -> str:
-        return """import dotenv from 'dotenv';
-
-dotenv.config();
-
-export const config = {
-  port: process.env.PORT || 3000,
-  nodeEnv: process.env.NODE_ENV || 'development',
-  databaseUrl: process.env.DATABASE_URL,
-};
-"""
-
-    def _express_routes(self, config: ProjectConfig) -> str:
-        return """import { Router } from 'express';
-
-const router = Router();
-
-router.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-export default router;
-"""
-
-    def _express_error_handler(self, config: ProjectConfig) -> str:
-        return """import { Request, Response, NextFunction } from 'express';
-
-export const errorHandler = (
-  err: Error,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-};
-"""
-
-    def _nestjs_main(self, config: ProjectConfig) -> str:
-        return """import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(3000);
-}
-bootstrap();
-"""
-
-    def _nestjs_app_module(self, config: ProjectConfig) -> str:
-        return """import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-
-@Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
-})
-export class AppModule {}
-"""
-
-    def _nestjs_controller(self, config: ProjectConfig) -> str:
-        return """import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
-
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
-}
-"""
-
-    def _nestjs_service(self, config: ProjectConfig) -> str:
-        return """import { Injectable } from '@nestjs/common';
-
-@Injectable()
-export class AppService {
-  getHello(): string {
-    return 'Hello World!';
-  }
-}
-"""
-
-    def _fastapi_pyproject(self, config: ProjectConfig) -> str:
         return f"""[project]
 name = "{config.name}"
 version = "{config.version}"
 description = "{config.description or ''}"
-authors = [{{name = "{config.author}"}}]
+authors = [{{name = "{config.author or 'Author'}"}}]
 readme = "README.md"
+license = {{text = "{config.license}"}}
 requires-python = ">={config.python_version}"
+dependencies = [{deps_str}]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4.0",
+    "pyright>=1.1",
+]
+{extra_sections}
+{scripts_str}
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{package_name}"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py{config.python_version.replace('.', '')}"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = {json.dumps(RUFF_RULES)}
 
-[tool.mypy]
-python_version = "{config.python_version}"
-strict = true
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "INP001"]
+
+[tool.pyright]
+pythonVersion = "{config.python_version}"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 """
 
-    def _fastapi_main(self, config: ProjectConfig) -> str:
-        return """from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+    def _python_common_files(self, path: Path, config: ProjectConfig) -> None:
+        """Write common files for all Python projects."""
+        self._write_file(path / ".gitignore", self._python_gitignore())
+        self._write_file(path / "CLAUDE.md", self._claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
 
-from app.core.config import settings
+    def _go_common_files(self, path: Path, config: ProjectConfig) -> None:
+        """Write common files for all Go projects."""
+        self._write_file(path / ".gitignore", self._go_gitignore())
+        self._write_file(path / "CLAUDE.md", self._claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-)
+    def _web_common_files(self, path: Path, config: ProjectConfig) -> None:
+        """Write common files for all web projects."""
+        self._write_file(path / ".gitignore", self._web_gitignore())
+        self._write_file(path / "CLAUDE.md", self._claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # =====================================================================
+    # Static HTML
+    # =====================================================================
+
+    def _create_html(self, path: Path, config: ProjectConfig) -> None:
+        """Create a static HTML/CSS site with Tailwind CDN."""
+        self._create_dirs(path, ["css", "js", "images"])
+
+        self._write_file(path / "index.html", f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{config.name}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <header class="bg-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <h1 class="text-3xl font-bold">{config.name}</h1>
+    </div>
+  </header>
+  <main class="max-w-7xl mx-auto px-4 py-8">
+    <p>{config.description or 'Welcome.'}</p>
+  </main>
+  <script src="js/main.js"></script>
+</body>
+</html>
+""")
+        self._write_file(path / "css/style.css", "/* Custom styles */\n")
+        self._write_file(path / "js/main.js", "// Main script\n")
+
+        self._write_file(path / ".gitignore", self._web_gitignore())
+        self._write_file(path / "CLAUDE.md", self._claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+
+    # =====================================================================
+    # Python: FastAPI
+    # =====================================================================
+
+    def _create_fastapi(self, path: Path, config: ProjectConfig) -> None:
+        """Create a FastAPI project with uv + src layout."""
+        config.language = Language.PYTHON
+        package_name = config.name.replace("-", "_")
+
+        self._create_dirs(path, [
+            f"src/{package_name}/api",
+            f"src/{package_name}/core",
+            f"src/{package_name}/models",
+            f"src/{package_name}/schemas",
+            "tests",
+        ])
+
+        deps = [
+            "fastapi>=0.115.0",
+            "uvicorn[standard]>=0.34.0",
+            "pydantic>=2.10.0",
+            "pydantic-settings>=2.1.0",
+        ]
+
+        if config.database == Database.POSTGRESQL:
+            deps.extend(["sqlalchemy>=2.0.0", "asyncpg>=0.29.0", "alembic>=1.13.0"])
+        elif config.database == Database.MYSQL:
+            deps.extend(["sqlalchemy>=2.0.0", "aiomysql>=0.2.0", "alembic>=1.13.0"])
+        elif config.database == Database.SQLITE:
+            deps.extend(["sqlalchemy>=2.0.0", "aiosqlite>=0.19.0", "alembic>=1.13.0"])
+
+        self._write_file(
+            path / "pyproject.toml",
+            self._pyproject_python(config, package_name, deps=deps),
+        )
+
+        # App files
+        self._write_file(path / f"src/{package_name}/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/main.py", f'''"""FastAPI application."""
+
+from fastapi import FastAPI
+
+from {package_name}.core.config import settings
+
+app = FastAPI(title=settings.app_name, version="{config.version}")
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health():
+    """Health check endpoint."""
+    return {{"status": "ok"}}
+''')
+        self._write_file(path / f"src/{package_name}/core/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/core/config.py", f'''"""Application settings."""
 
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the API"}
-"""
-
-    def _fastapi_config(self, config: ProjectConfig) -> str:
-        return f"""from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "{config.name}"
-    VERSION: str = "{config.version}"
-    API_V1_STR: str = "/api/v1"
+    """App configuration loaded from environment."""
 
-    DATABASE_URL: str = "sqlite:///./app.db"
+    app_name: str = "{config.name}"
+    debug: bool = False
+    database_url: str = ""
 
     class Config:
         env_file = ".env"
 
 
 settings = Settings()
-"""
+''')
+        self._write_file(path / f"src/{package_name}/api/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/models/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/schemas/__init__.py", "")
 
-    def _fastapi_db_session(self, config: ProjectConfig) -> str:
-        return """from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+        # Tests
+        self._write_file(path / "tests/__init__.py", "")
+        self._write_file(path / "tests/test_health.py", f'''"""Tests for health endpoint."""
 
-from app.core.config import settings
+from fastapi.testclient import TestClient
 
-engine = create_async_engine(settings.DATABASE_URL, echo=True)
+from {package_name}.main import app
 
-async_session = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
-
-
-async def get_db() -> AsyncSession:
-    async with async_session() as session:
-        yield session
-"""
-
-    def _fastapi_db_base(self) -> str:
-        return """from sqlalchemy.orm import DeclarativeBase
+client = TestClient(app)
 
 
-class Base(DeclarativeBase):
-    pass
-"""
+def test_health():
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {{"status": "ok"}}
+''')
 
-    def _alembic_ini(self, config: ProjectConfig) -> str:
-        return """[alembic]
-script_location = alembic
-prepend_sys_path = .
-version_path_separator = os
+        self._write_file(path / ".env.example", "DEBUG=true\nDATABASE_URL=\n")
 
-[post_write_hooks]
+        if config.docker:
+            self._write_file(path / "compose.yml", self._fastapi_docker_compose(config))
 
-[loggers]
-keys = root,sqlalchemy,alembic
-
-[handlers]
-keys = console
-
-[formatters]
-keys = generic
-
-[logger_root]
-level = WARN
-handlers = console
-qualname =
-
-[logger_sqlalchemy]
-level = WARN
-handlers =
-qualname = sqlalchemy.engine
-
-[logger_alembic]
-level = INFO
-handlers =
-qualname = alembic
-
-[handler_console]
-class = StreamHandler
-args = (sys.stderr,)
-level = NOTSET
-formatter = generic
-
-[formatter_generic]
-format = %(levelname)-5.5s [%(name)s] %(message)s
-datefmt = %H:%M:%S
-"""
-
-    def _alembic_env(self, config: ProjectConfig) -> str:
-        return """from logging.config import fileConfig
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
-from alembic import context
-
-from app.core.config import settings
-from app.db.base import Base
-
-config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-target_metadata = Base.metadata
-
-
-def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations() -> None:
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    import asyncio
-    asyncio.run(run_async_migrations())
-
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
-"""
-
-    def _ruff_config(self) -> str:
-        return """line-length = 100
-target-version = "py314"
-
-[lint]
-select = [
-    "E",   # pycodestyle errors
-    "F",   # pyflakes
-    "I",   # isort
-    "N",   # pep8-naming
-    "W",   # pycodestyle warnings
-    "UP",  # pyupgrade
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-]
-ignore = ["E501"]
-
-[lint.isort]
-known-first-party = ["app"]
-"""
-
-    def _fastapi_dockerfile(self, config: ProjectConfig) -> str:
-        return f"""FROM python:{config.python_version}-slim as builder
-
-WORKDIR /app
-
-RUN pip install --no-cache-dir poetry
-
-COPY pyproject.toml poetry.lock* ./
-RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
-
-FROM python:{config.python_version}-slim
-
-WORKDIR /app
-
-COPY --from=builder /app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-"""
+        self._python_common_files(path, config)
 
     def _fastapi_docker_compose(self, config: ProjectConfig) -> str:
-        services = """services:
+        return """services:
   app:
     build: .
     ports:
@@ -2544,255 +665,119 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 volumes:
   postgres_data:
 """
-        return services
 
-    def _django_settings_base(self, config: ProjectConfig, project_name: str) -> str:
-        return f"""from pathlib import Path
-import environ
+    # =====================================================================
+    # Python: Flask
+    # =====================================================================
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+    def _create_flask(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Flask project with uv + src layout."""
+        config.language = Language.PYTHON
+        package_name = config.name.replace("-", "_")
 
-env = environ.Env()
-environ.Env.read_env(BASE_DIR / '.env')
+        self._create_dirs(path, [
+            f"src/{package_name}/api",
+            f"src/{package_name}/models",
+            f"src/{package_name}/services",
+            "tests",
+        ])
 
-SECRET_KEY = env('SECRET_KEY', default='your-secret-key-change-in-production')
+        deps = [
+            "flask>=3.1.0",
+            "python-dotenv>=1.0.0",
+        ]
 
-DEBUG = env.bool('DEBUG', default=False)
+        if config.database in (Database.POSTGRESQL, Database.MYSQL, Database.SQLITE):
+            deps.extend(["flask-sqlalchemy>=3.1.0", "flask-migrate>=4.0.0"])
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+        self._write_file(
+            path / "pyproject.toml",
+            self._pyproject_python(config, package_name, deps=deps),
+        )
 
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'apps.core',
-    'apps.users',
-]
+        self._write_file(path / f"src/{package_name}/__init__.py", f'''"""Flask application factory."""
 
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
+from flask import Flask
 
-ROOT_URLCONF = '{project_name}.urls'
 
-TEMPLATES = [
-    {{
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
-        'APP_DIRS': True,
-        'OPTIONS': {{
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        }},
-    }},
-]
-
-WSGI_APPLICATION = '{project_name}.wsgi.application'
-
-DATABASES = {{
-    'default': env.db('DATABASE_URL', default='sqlite:///db.sqlite3')
-}}
-
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
-
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-"""
-
-    def _django_settings_dev(self, config: ProjectConfig) -> str:
-        return """from .base import *
-
-DEBUG = True
-ALLOWED_HOSTS = ['*']
-"""
-
-    def _django_settings_prod(self, config: ProjectConfig) -> str:
-        return """from .base import *
-
-DEBUG = False
-# Add production-specific settings
-"""
-
-    def _django_urls(self, config: ProjectConfig) -> str:
-        return """from django.contrib import admin
-from django.urls import path
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-]
-"""
-
-    def _django_wsgi(self, config: ProjectConfig, project_name: str) -> str:
-        return f"""import os
-from django.core.wsgi import get_wsgi_application
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', '{project_name}.settings')
-application = get_wsgi_application()
-"""
-
-    def _django_asgi(self, config: ProjectConfig, project_name: str) -> str:
-        return f"""import os
-from django.core.asgi import get_asgi_application
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', '{project_name}.settings')
-application = get_asgi_application()
-"""
-
-    def _django_manage(self, config: ProjectConfig, project_name: str) -> str:
-        return f"""#!/usr/bin/env python
-import os
-import sys
-
-def main():
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', '{project_name}.settings')
-    try:
-        from django.core.management import execute_from_command_line
-    except ImportError as exc:
-        raise ImportError(
-            "Couldn't import Django."
-        ) from exc
-    execute_from_command_line(sys.argv)
-
-if __name__ == '__main__':
-    main()
-"""
-
-    def _flask_init(self, config: ProjectConfig) -> str:
-        return """from flask import Flask
-
-def create_app():
+def create_app() -> Flask:
+    """Create and configure the Flask application."""
     app = Flask(__name__)
-    app.config.from_object('app.config.Config')
+    app.config.from_prefixed_env()
 
-    @app.route('/')
-    def index():
-        return {'message': 'Hello, World!'}
+    from {package_name}.api import routes
+    app.register_blueprint(routes.bp)
 
     return app
-"""
+''')
+        self._write_file(path / f"src/{package_name}/api/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/api/routes.py", '''"""API routes."""
 
-    def _flask_config(self, config: ProjectConfig) -> str:
-        return """import os
+from flask import Blueprint, jsonify
 
-class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key')
-    DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'
-"""
-
-    def _flask_run(self, config: ProjectConfig) -> str:
-        return """from app import create_app
-
-app = create_app()
-
-if __name__ == '__main__':
-    app.run(debug=True)
-"""
-
-    def _python_pyproject(self, config: ProjectConfig, package_name: str) -> str:
-        return f"""[project]
-name = "{config.name}"
-version = "{config.version}"
-description = "{config.description or ''}"
-authors = [{{name = "{config.author}"}}]
-readme = "README.md"
-license = {{text = "{config.license}"}}
-requires-python = ">={config.python_version}"
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-]
-dependencies = []
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=4.1.0",
-    "ruff>=0.9.0",
-    "mypy>=1.14.0",
-]
-
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.ruff]
-line-length = 100
-target-version = "py314"
-
-[tool.mypy]
-python_version = "{config.python_version}"
-strict = true
-"""
-
-    def _python_main(self, config: ProjectConfig) -> str:
-        return '''"""Main module."""
+bp = Blueprint("api", __name__)
 
 
-def hello(name: str) -> str:
-    """Return a greeting."""
-    return f"Hello, {name}!"
-'''
+@bp.route("/health")
+def health():
+    """Health check endpoint."""
+    return jsonify(status="ok")
+''')
+        self._write_file(path / f"src/{package_name}/models/__init__.py", "")
+        self._write_file(path / f"src/{package_name}/services/__init__.py", "")
 
-    def _python_test(self, config: ProjectConfig, package_name: str) -> str:
-        return f'''"""Tests for main module."""
+        self._write_file(path / "tests/__init__.py", "")
+        self._write_file(path / "tests/test_health.py", f'''"""Tests for health endpoint."""
 
-from {package_name}.main import hello
+import pytest
+
+from {package_name} import create_app
 
 
-def test_hello():
-    """Test hello function."""
-    assert hello("World") == "Hello, World!"
-'''
+@pytest.fixture()
+def client():
+    app = create_app()
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
 
-    def _python_cli_pyproject(self, config: ProjectConfig, package_name: str) -> str:
-        return f"""[project]
-name = "{config.name}"
-version = "{config.version}"
-description = "{config.description or ''}"
-authors = [{{name = "{config.author}"}}]
-readme = "README.md"
-requires-python = ">={config.python_version}"
-dependencies = [
-    "typer[all]>=0.9.0",
-    "rich>=13.7.0",
-]
 
-[project.scripts]
-{config.name} = "{package_name}.cli:app"
+def test_health(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json == {{"status": "ok"}}
+''')
 
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+        self._write_file(path / ".env.example", "FLASK_DEBUG=true\nFLASK_DATABASE_URL=\n")
+        self._python_common_files(path, config)
 
-[tool.setuptools.packages.find]
-where = ["src"]
-"""
+    # =====================================================================
+    # Python: CLI (Typer)
+    # =====================================================================
 
-    def _python_cli_main(self, config: ProjectConfig, package_name: str) -> str:
-        return f'''"""CLI application."""
+    def _create_python_cli(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Python CLI tool with Typer + uv."""
+        config.language = Language.PYTHON
+        package_name = config.name.replace("-", "_")
+
+        self._create_dirs(path, [
+            f"src/{package_name}/commands",
+            "tests",
+        ])
+
+        deps = ["typer[all]>=0.15.0", "rich>=13.7.0"]
+        scripts = {config.name: f"{package_name}.cli:app"}
+
+        self._write_file(
+            path / "pyproject.toml",
+            self._pyproject_python(config, package_name, deps=deps, scripts=scripts),
+        )
+
+        self._write_file(path / f"src/{package_name}/__init__.py",
+                         f'"""{ config.description or config.name }"""\n\n__version__ = "{config.version}"\n')
+        self._write_file(path / f"src/{package_name}/__main__.py",
+                         f"from {package_name}.cli import app\n\nif __name__ == '__main__':\n    app()\n")
+        self._write_file(path / f"src/{package_name}/cli.py", f'''"""CLI application."""
 
 import typer
 from rich import print
@@ -2810,717 +795,1038 @@ def hello(name: str = "World"):
 def version():
     """Show version."""
     from {package_name} import __version__
+
     print(f"[blue]{{__version__}}[/blue]")
 
 
 if __name__ == "__main__":
     app()
-'''
+''')
+        self._write_file(path / f"src/{package_name}/commands/__init__.py", "")
 
-    def _tsup_config(self) -> str:
-        return """import { defineConfig } from 'tsup';
+        self._write_file(path / "tests/__init__.py", "")
+        self._write_file(path / "tests/test_cli.py", f'''"""Tests for CLI."""
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['cjs', 'esm'],
-  dts: true,
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-});
-"""
+from typer.testing import CliRunner
 
-    def _cli_tsup_config(self, config: ProjectConfig) -> str:
-        return """import { defineConfig } from 'tsup';
+from {package_name}.cli import app
 
-export default defineConfig({
-  entry: ['src/cli.ts'],
-  format: ['esm'],
-  target: 'node24',
-  splitting: false,
-  sourcemap: true,
-  clean: true,
-  banner: {
-    js: '#!/usr/bin/env node',
-  },
-});
-"""
+runner = CliRunner()
 
-    def _node_cli_main(self, config: ProjectConfig) -> str:
-        return f"""import {{ Command }} from 'commander';
-import chalk from 'chalk';
 
-const program = new Command();
+def test_hello():
+    result = runner.invoke(app, ["hello", "--name", "Test"])
+    assert result.exit_code == 0
+    assert "Test" in result.stdout
 
-program
-  .name('{config.name}')
-  .description('{config.description or "CLI tool"}')
-  .version('0.1.0');
 
-program
-  .command('hello')
-  .description('Say hello')
-  .argument('[name]', 'Name to greet', 'World')
-  .action((name) => {{
-    console.log(chalk.green(`Hello, ${{name}}!`));
-  }});
+def test_version():
+    result = runner.invoke(app, ["version"])
+    assert result.exit_code == 0
+''')
 
-program.parse();
-"""
+        self._python_common_files(path, config)
 
-    def _electron_main(self, config: ProjectConfig) -> str:
-        return """const { app, BrowserWindow } = require('electron');
-const path = require('path');
+    # =====================================================================
+    # Python: Library (PyPI)
+    # =====================================================================
 
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+    def _create_python_lib(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Python library with uv + src layout."""
+        config.language = Language.PYTHON
+        package_name = config.name.replace("-", "_")
 
-  mainWindow.loadFile('src/renderer/index.html');
-}
+        self._create_dirs(path, [f"src/{package_name}", "tests"])
 
-app.whenReady().then(() => {
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-"""
-
-    def _electron_preload(self, config: ProjectConfig) -> str:
-        return """const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Add your API methods here
-});
-"""
-
-    def _electron_html(self, config: ProjectConfig) -> str:
-        return f"""<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'" />
-    <title>{config.name}</title>
-  </head>
-  <body>
-    <h1>Hello from {config.name}!</h1>
-  </body>
-</html>
-"""
-
-    # =========================================================================
-    # HTML/CSS Templates
-    # =========================================================================
-
-    def _html_css_links(self, config: ProjectConfig) -> str:
-        """Generate CSS link tags based on framework configuration."""
-        if config.css_framework == CSSFramework.NONE:
-            return ''
-        if config.css_framework == CSSFramework.TAILWIND:
-            return '\n    <link rel="stylesheet" href="css/output.css">'
-        return '''
-    <link rel="stylesheet" href="css/reset.css">
-    <link rel="stylesheet" href="css/style.css">'''
-
-    def _html_header(self, config: ProjectConfig, active_page: str = "index") -> str:
-        """Generate HTML header with navigation."""
-        nav_items = [
-            ("index.html", "Home", "index"),
-            ("about.html", "About", "about"),
-            ("contact.html", "Contact", "contact"),
-        ]
-        nav_links = "\n".join(
-            f'                <li class="nav__item"><a href="{href}" class="nav__link{" nav__link--active" if key == active_page else ""}">{label}</a></li>'
-            for href, label, key in nav_items
+        self._write_file(
+            path / "pyproject.toml",
+            self._pyproject_python(config, package_name),
         )
-        return f'''    <header class="header">
-        <nav class="nav">
-            <div class="nav__logo">
-                <a href="index.html">{config.name}</a>
-            </div>
-            <ul class="nav__menu">
-{nav_links}
-            </ul>
-        </nav>
-    </header>'''
 
-    def _html_footer(self, config: ProjectConfig) -> str:
-        """Generate HTML footer."""
-        return f'''    <footer class="footer">
-        <div class="container">
-            <p>&copy; 2026 {config.name}. All rights reserved.</p>
-        </div>
-    </footer>'''
+        self._write_file(path / f"src/{package_name}/__init__.py",
+                         f'"""{config.description or config.name}"""\n\n__version__ = "{config.version}"\n')
+        self._write_file(path / f"src/{package_name}/main.py", '''"""Main module."""
 
-    def _html_index(self, config: ProjectConfig) -> str:
-        """Generate index.html for static website."""
-        css_links = self._html_css_links(config)
-        header = self._html_header(config, "index")
-        footer = self._html_footer(config)
 
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="{config.description or config.name}">
-    <meta name="author" content="{config.author or ''}">
-    <title>{config.name}</title>{css_links}
-</head>
-<body>
-{header}
+def hello(name: str) -> str:
+    """Return a greeting."""
+    return f"Hello, {name}!"
+''')
 
-    <!-- Main Content -->
-    <main class="main">
-        <section class="hero">
-            <div class="hero__content">
-                <h1 class="hero__title">Welcome to {config.name}</h1>
-                <p class="hero__subtitle">{config.description or 'A modern, responsive website'}</p>
-                <a href="about.html" class="btn btn--primary">Learn More</a>
-            </div>
-        </section>
+        self._write_file(path / "tests/__init__.py", "")
+        self._write_file(path / "tests/test_main.py", f'''"""Tests for main module."""
 
-        <section class="features">
-            <div class="container">
-                <h2 class="section__title">Features</h2>
-                <div class="features__grid">
-                    <div class="feature">
-                        <h3 class="feature__title">Responsive Design</h3>
-                        <p class="feature__text">Works seamlessly on all devices</p>
-                    </div>
-                    <div class="feature">
-                        <h3 class="feature__title">Modern CSS</h3>
-                        <p class="feature__text">Clean and maintainable styles</p>
-                    </div>
-                    <div class="feature">
-                        <h3 class="feature__title">Fast Performance</h3>
-                        <p class="feature__text">Optimized for speed</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
+from {package_name}.main import hello
 
-{footer}
 
-    <script src="js/main.js"></script>
-</body>
-</html>
+def test_hello():
+    assert hello("World") == "Hello, World!"
+''')
+
+        self._python_common_files(path, config)
+
+    # =====================================================================
+    # Python: Data Analysis (Polars + Jupyter)
+    # =====================================================================
+
+    def _create_python_data(self, path: Path, config: ProjectConfig) -> None:
+        """Create a data analysis project with Polars + Jupyter."""
+        config.language = Language.PYTHON
+        package_name = config.name.replace("-", "_")
+
+        self._create_dirs(path, [
+            f"src/{package_name}",
+            "notebooks",
+            "data/raw",
+            "data/processed",
+            "tests",
+        ])
+
+        deps = [
+            "polars>=1.0.0",
+            "plotly>=5.22.0",
+            "pyarrow>=17.0.0",
+        ]
+
+        extra = """notebook = [
+    "jupyter>=1.1",
+    "ipykernel>=7.0",
+    "nbstripout>=0.7",
+]
 """
 
-    def _html_about(self, config: ProjectConfig) -> str:
-        """Generate about.html page."""
-        css_links = self._html_css_links(config)
-        header = self._html_header(config, "about")
-        footer = self._html_footer(config)
+        self._write_file(
+            path / "pyproject.toml",
+            self._pyproject_python(
+                config,
+                package_name,
+                deps=deps,
+                extra_sections=extra,
+            ),
+        )
 
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="About {config.name}">
-    <title>About - {config.name}</title>{css_links}
-</head>
-<body>
-{header}
+        self._write_file(path / f"src/{package_name}/__init__.py",
+                         f'"""{config.description or config.name}"""\n\n__version__ = "{config.version}"\n')
+        self._write_file(path / f"src/{package_name}/load.py", '''"""Data loading utilities."""
 
-    <main class="main">
-        <section class="page-header">
-            <div class="container">
-                <h1 class="page-header__title">About Us</h1>
-                <p class="page-header__subtitle">Learn more about {config.name}</p>
-            </div>
-        </section>
+from pathlib import Path
 
-        <section class="content">
-            <div class="container">
-                <p>This is the about page. Add your content here.</p>
-            </div>
-        </section>
-    </main>
+import polars as pl
 
-{footer}
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
-    <script src="js/main.js"></script>
-</body>
-</html>
-"""
 
-    def _html_contact(self, config: ProjectConfig) -> str:
-        """Generate contact.html page."""
-        css_links = self._html_css_links(config)
-        header = self._html_header(config, "contact")
-        footer = self._html_footer(config)
+def load_raw(filename: str) -> pl.DataFrame:
+    """Load a raw data file (CSV or Parquet)."""
+    path = DATA_DIR / "raw" / filename
+    if path.suffix == ".parquet":
+        return pl.read_parquet(path)
+    return pl.read_csv(path)
 
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Contact {config.name}">
-    <title>Contact - {config.name}</title>{css_links}
-</head>
-<body>
-{header}
 
-    <main class="main">
-        <section class="page-header">
-            <div class="container">
-                <h1 class="page-header__title">Contact Us</h1>
-                <p class="page-header__subtitle">Get in touch</p>
-            </div>
-        </section>
+def save_processed(df: pl.DataFrame, filename: str) -> Path:
+    """Save a processed DataFrame to parquet."""
+    path = DATA_DIR / "processed" / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+    return path
+''')
 
-        <section class="content">
-            <div class="container">
-                <form class="contact-form" action="#" method="post">
-                    <div class="form-group">
-                        <label for="name" class="form-label">Name</label>
-                        <input type="text" id="name" name="name" class="form-input" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" id="email" name="email" class="form-input" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="message" class="form-label">Message</label>
-                        <textarea id="message" name="message" class="form-textarea" rows="5" required></textarea>
-                    </div>
-                    <button type="submit" class="btn btn--primary">Send Message</button>
-                </form>
-            </div>
-        </section>
-    </main>
+        self._write_file(path / "notebooks/.gitkeep", "")
+        self._write_file(path / "data/raw/.gitkeep", "")
+        self._write_file(path / "data/processed/.gitkeep", "")
 
-{footer}
+        self._write_file(path / "tests/__init__.py", "")
+        self._write_file(path / "tests/test_load.py", f'''"""Tests for data loading."""
 
-    <script src="js/main.js"></script>
-</body>
-</html>
-"""
+from pathlib import Path
 
-    def _css_reset(self) -> str:
-        """Generate CSS reset file."""
-        return """/* CSS Reset */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+from {package_name}.load import DATA_DIR
+
+
+def test_data_dir_exists():
+    assert DATA_DIR.exists() or True  # CI may not have data dir
+''')
+
+        self._python_common_files(path, config)
+
+    # =====================================================================
+    # Go: API (Gin or Chi)
+    # =====================================================================
+
+    def _create_go_api(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Go API project with standard layout."""
+        config.language = Language.GO
+        module_name = config.name
+
+        # Choose framework based on project type
+        framework = "chi" if config.project_type == "go-chi" else "gin"
+
+        self._create_dirs(path, [
+            "cmd/server",
+            "internal/handler",
+            "internal/model",
+            "internal/service",
+            "pkg",
+        ])
+
+        # go.mod
+        self._write_file(path / "go.mod", f"""module {module_name}
+
+go {config.go_version}
+""")
+
+        if framework == "gin":
+            self._write_file(path / "cmd/server/main.go", f'''package main
+
+import (
+\t"log"
+\t"os"
+
+\t"github.com/gin-gonic/gin"
+\t"{module_name}/internal/handler"
+)
+
+func main() {{
+\tport := os.Getenv("PORT")
+\tif port == "" {{
+\t\tport = "8080"
+\t}}
+
+\tr := gin.Default()
+\thandler.RegisterRoutes(r)
+
+\tlog.Printf("Starting server on :%s", port)
+\tif err := r.Run(":" + port); err != nil {{
+\t\tlog.Fatal(err)
+\t}}
+}}
+''')
+            self._write_file(path / "internal/handler/health.go", '''package handler
+
+import (
+\t"net/http"
+
+\t"github.com/gin-gonic/gin"
+)
+
+func RegisterRoutes(r *gin.Engine) {
+\tr.GET("/health", healthHandler)
 }
 
-html {
-    font-size: 16px;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+func healthHandler(c *gin.Context) {
+\tc.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
+''')
+        else:  # chi
+            self._write_file(path / "cmd/server/main.go", '''package main
 
-body {
-    line-height: 1.6;
+import (
+\t"encoding/json"
+\t"log"
+\t"net/http"
+\t"os"
+
+\t"github.com/go-chi/chi/v5"
+\t"github.com/go-chi/chi/v5/middleware"
+)
+
+func main() {
+\tport := os.Getenv("PORT")
+\tif port == "" {
+\t\tport = "8080"
+\t}
+
+\tr := chi.NewRouter()
+\tr.Use(middleware.Logger)
+\tr.Use(middleware.Recoverer)
+
+\tr.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+\t\tw.Header().Set("Content-Type", "application/json")
+\t\tjson.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+\t})
+
+\tlog.Printf("Starting server on :%s", port)
+\tif err := http.ListenAndServe(":"+port, r); err != nil {
+\t\tlog.Fatal(err)
+\t}
 }
+''')
 
-img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-}
+        self._write_file(path / "internal/model/.gitkeep", "")
+        self._write_file(path / "internal/service/.gitkeep", "")
+        self._write_file(path / "pkg/.gitkeep", "")
 
-a {
-    text-decoration: none;
-    color: inherit;
-}
+        # Makefile
+        self._write_file(path / "Makefile", f""".PHONY: build test lint run clean
 
-button {
-    border: none;
-    background: none;
-    cursor: pointer;
-    font: inherit;
-}
+BINARY_NAME := {config.name}
+BUILD_DIR := ./bin
 
-ul {
-    list-style: none;
-}
-"""
+build:
+\tgo build -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/server
 
-    def _css_main(self, config: ProjectConfig) -> str:
-        """Generate main stylesheet with BEM methodology."""
-        if config.css_framework == CSSFramework.TAILWIND:
-            return """@import "tailwindcss";
-"""
+test:
+\tgo test -v -race -coverprofile=coverage.txt ./...
 
-        return """/* Variables */
-:root {
-    --color-primary: #3b82f6;
-    --color-primary-dark: #2563eb;
-    --color-secondary: #64748b;
-    --color-text: #1e293b;
-    --color-text-light: #64748b;
-    --color-background: #ffffff;
-    --color-background-light: #f8fafc;
-    --color-border: #e2e8f0;
+lint:
+\tgolangci-lint run ./...
 
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+run: build
+\t$(BUILD_DIR)/$(BINARY_NAME)
 
-    --spacing-xs: 0.5rem;
-    --spacing-sm: 1rem;
-    --spacing-md: 1.5rem;
-    --spacing-lg: 2rem;
-    --spacing-xl: 3rem;
+clean:
+\trm -rf $(BUILD_DIR) coverage.txt
+""")
 
-    --border-radius: 0.5rem;
-    --box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-}
+        self._write_file(path / ".env.example", "PORT=8080\n")
 
-/* Global Styles */
-body {
-    font-family: var(--font-sans);
-    color: var(--color-text);
-    background-color: var(--color-background);
-}
+        readme = self._readme(
+            config,
+            install_steps="```bash\ngo mod tidy\n```",
+            dev_steps="```bash\nmake run\n```",
+        )
+        self._write_file(path / "README.md", readme)
+        self._go_common_files(path, config)
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 var(--spacing-md);
-}
+    # =====================================================================
+    # Go: CLI (Cobra)
+    # =====================================================================
 
-/* Header & Navigation */
-.header {
-    background-color: var(--color-background);
-    border-bottom: 1px solid var(--color-border);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
+    def _create_go_cli(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Go CLI tool with Cobra."""
+        config.language = Language.GO
+        module_name = config.name
 
-.nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-sm) var(--spacing-md);
-    max-width: 1200px;
-    margin: 0 auto;
-}
+        self._create_dirs(path, ["cmd", "internal"])
 
-.nav__logo a {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-primary);
-}
+        self._write_file(path / "go.mod", f"""module {module_name}
 
-.nav__menu {
-    display: flex;
-    gap: var(--spacing-md);
-}
+go {config.go_version}
+""")
 
-.nav__link {
-    color: var(--color-text-light);
-    transition: color 0.2s;
-}
+        self._write_file(path / "main.go", f'''package main
 
-.nav__link:hover,
-.nav__link--active {
-    color: var(--color-primary);
-}
+import "{module_name}/cmd"
 
-/* Hero Section */
-.hero {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: var(--spacing-xl) 0;
-    text-align: center;
-}
+func main() {{
+\tcmd.Execute()
+}}
+''')
 
-.hero__content {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 0 var(--spacing-md);
-}
+        self._write_file(path / "cmd/root.go", f'''package cmd
 
-.hero__title {
-    font-size: 3rem;
-    font-weight: 800;
-    margin-bottom: var(--spacing-sm);
-}
+import (
+\t"fmt"
+\t"os"
 
-.hero__subtitle {
-    font-size: 1.25rem;
-    margin-bottom: var(--spacing-lg);
-    opacity: 0.9;
-}
+\t"github.com/spf13/cobra"
+)
 
-/* Buttons */
-.btn {
-    display: inline-block;
-    padding: var(--spacing-sm) var(--spacing-lg);
-    border-radius: var(--border-radius);
-    font-weight: 600;
-    transition: all 0.2s;
-}
+var rootCmd = &cobra.Command{{
+\tUse:   "{config.name}",
+\tShort: "{config.description or config.name}",
+}}
 
-.btn--primary {
-    background-color: white;
-    color: var(--color-primary);
-}
+func Execute() {{
+\tif err := rootCmd.Execute(); err != nil {{
+\t\tfmt.Fprintln(os.Stderr, err)
+\t\tos.Exit(1)
+\t}}
+}}
 
-.btn--primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
+func init() {{
+\t// Add subcommands here
+\trootCmd.AddCommand(versionCmd)
+}}
 
-/* Features Section */
-.features {
-    padding: var(--spacing-xl) 0;
-}
+var versionCmd = &cobra.Command{{
+\tUse:   "version",
+\tShort: "Print version",
+\tRun: func(cmd *cobra.Command, args []string) {{
+\t\tfmt.Println("{config.name} v{config.version}")
+\t}},
+}}
+''')
 
-.section__title {
-    font-size: 2rem;
-    font-weight: 700;
-    text-align: center;
-    margin-bottom: var(--spacing-lg);
-}
+        # Makefile
+        self._write_file(path / "Makefile", f""".PHONY: build test lint run clean
 
-.features__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: var(--spacing-lg);
-    margin-top: var(--spacing-lg);
-}
+BINARY_NAME := {config.name}
+BUILD_DIR := ./bin
 
-.feature {
-    padding: var(--spacing-lg);
-    background-color: var(--color-background-light);
-    border-radius: var(--border-radius);
-    text-align: center;
-}
+build:
+\tgo build -o $(BUILD_DIR)/$(BINARY_NAME) .
 
-.feature__title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: var(--spacing-sm);
-    color: var(--color-primary);
-}
+test:
+\tgo test -v -race -coverprofile=coverage.txt ./...
 
-.feature__text {
-    color: var(--color-text-light);
-}
+lint:
+\tgolangci-lint run ./...
 
-/* Page Header */
-.page-header {
-    background-color: var(--color-background-light);
-    padding: var(--spacing-xl) 0;
-    text-align: center;
-}
+run: build
+\t$(BUILD_DIR)/$(BINARY_NAME)
 
-.page-header__title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: var(--spacing-sm);
-}
+clean:
+\trm -rf $(BUILD_DIR) coverage.txt
+""")
 
-.page-header__subtitle {
-    font-size: 1.125rem;
-    color: var(--color-text-light);
-}
+        readme = self._readme(
+            config,
+            install_steps=f"```bash\ngo install {module_name}@latest\n# or\nmake build\n```",
+            dev_steps="```bash\nmake run\n```",
+        )
+        self._write_file(path / "README.md", readme)
+        self._go_common_files(path, config)
 
-/* Content Section */
-.content {
-    padding: var(--spacing-xl) 0;
-}
+    # =====================================================================
+    # Go: Module (library)
+    # =====================================================================
 
-/* Contact Form */
-.contact-form {
-    max-width: 600px;
-    margin: 0 auto;
-}
+    def _create_go_module(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Go module/library."""
+        config.language = Language.GO
+        module_name = config.name
+        package = config.name.replace("-", "").replace("_", "")
 
-.form-group {
-    margin-bottom: var(--spacing-md);
-}
+        self._write_file(path / "go.mod", f"""module {module_name}
 
-.form-label {
-    display: block;
-    margin-bottom: var(--spacing-xs);
-    font-weight: 600;
-}
+go {config.go_version}
+""")
 
-.form-input,
-.form-textarea {
-    width: 100%;
-    padding: var(--spacing-sm);
-    border: 1px solid var(--color-border);
-    border-radius: var(--border-radius);
-    font-family: inherit;
-}
+        self._write_file(path / f"{package}.go", f'''// Package {package} provides {config.description or "library functionality"}.
+package {package}
 
-.form-input:focus,
-.form-textarea:focus {
-    outline: none;
-    border-color: var(--color-primary);
-}
+// Hello returns a greeting for the given name.
+func Hello(name string) string {{
+\treturn "Hello, " + name + "!"
+}}
+''')
 
-/* Footer */
-.footer {
-    background-color: var(--color-background-light);
-    border-top: 1px solid var(--color-border);
-    padding: var(--spacing-lg) 0;
-    text-align: center;
-    color: var(--color-text-light);
-}
+        self._write_file(path / f"{package}_test.go", f'''package {package}
 
-/* Responsive */
-@media (max-width: 768px) {
-    .hero__title {
-        font-size: 2rem;
-    }
+import "testing"
 
-    .nav__menu {
-        gap: var(--spacing-sm);
-    }
+func TestHello(t *testing.T) {{
+\tgot := Hello("World")
+\twant := "Hello, World!"
+\tif got != want {{
+\t\tt.Errorf("Hello() = %q, want %q", got, want)
+\t}}
+}}
+''')
 
-    .features__grid {
-        grid-template-columns: 1fr;
-    }
-}
-"""
+        self._write_file(path / "Makefile", """.PHONY: test lint
 
-    def _js_main(self) -> str:
-        """Generate main JavaScript file."""
-        return """// Main JavaScript file
-console.log('Website loaded successfully');
+test:
+\tgo test -v -race -coverprofile=coverage.txt ./...
 
-// Mobile menu toggle (if needed)
-document.addEventListener('DOMContentLoaded', () => {
-    // Add your JavaScript here
+lint:
+\tgolangci-lint run ./...
+""")
 
-    // Example: Smooth scrolling for anchor links
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth'
-                });
-            }
-        });
-    });
-});
-"""
+        readme = self._readme(
+            config,
+            install_steps=f"```bash\ngo get {module_name}\n```",
+            dev_steps="```bash\nmake test\n```",
+        )
+        self._write_file(path / "README.md", readme)
+        self._go_common_files(path, config)
+
+    # =====================================================================
+    # Ansible: Full playbook project
+    # =====================================================================
+
+    def _create_ansible(self, path: Path, config: ProjectConfig) -> None:
+        """Create a full Ansible playbook project."""
+        self._create_dirs(path, [
+            "roles",
+            "group_vars/all",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+# Add target hosts here.
+#
+# all:
+#   children:
+#     servers:
+#       hosts:
+#         server-01:
+#           ansible_host: 192.168.1.10
+#           ansible_user: deploy
+
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or config.name}
+  hosts: all
+  gather_facts: true
+
+  roles: []
+    # - role: my_role
+    #   tags: my_role
+""")
+
+        self._write_file(path / "group_vars/all/main.yml", """---
+# Global variables for all hosts
+# app_name: my-app
+""")
+
+        self._write_file(path / "requirements.yml", """---
+# Ansible Galaxy roles and collections
+# Install with: ansible-galaxy install -r requirements.yml
+
+roles: []
+
+collections:
+  - name: community.general
+  - name: community.docker
+""")
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\nansible-galaxy install -r requirements.yml\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
+    # Ansible: Reusable role (Galaxy-style)
+    # =====================================================================
+
+    def _create_ansible_role(self, path: Path, config: ProjectConfig) -> None:
+        """Create a standalone Ansible role with playbook wrapper."""
+        role_name = config.name.replace("-", "_")
+
+        self._create_dirs(path, [
+            f"roles/{role_name}/tasks",
+            f"roles/{role_name}/defaults",
+            f"roles/{role_name}/handlers",
+            f"roles/{role_name}/templates",
+            f"roles/{role_name}/files",
+            "group_vars",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or config.name}
+  hosts: all
+  gather_facts: true
+  tags: [{role_name}]
+
+  roles:
+    - role: {role_name}
+""")
+
+        self._write_file(
+            path / f"roles/{role_name}/defaults/main.yml",
+            f"""---
+# {role_name} role defaults
+# Override per-host in host_vars/ or per-group in group_vars/.
+""",
+        )
+
+        self._write_file(
+            path / f"roles/{role_name}/tasks/main.yml",
+            f"""---
+# {role_name} — main task dispatcher
+
+- name: Placeholder task
+  ansible.builtin.debug:
+    msg: "{role_name} role is running on {{{{ inventory_hostname }}}}"
+""",
+        )
+
+        self._write_file(
+            path / f"roles/{role_name}/handlers/main.yml",
+            """---
+# Handlers — triggered by notify in tasks
+# - name: Restart service
+#   ansible.builtin.service:
+#     name: my-service
+#     state: restarted
+""",
+        )
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\n# No external dependencies\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Dry run
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+
+# Deploy
+ansible-playbook playbook.yml -i inventory.yml
+ansible-playbook playbook.yml -i inventory.yml --limit server-01
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
+    # Ansible: Docker container deployment structure
+    # =====================================================================
+
+    def _create_ansible_container(self, path: Path, config: ProjectConfig) -> None:
+        """Create the skeleton for a tag-based Docker container Ansible role.
+
+        Generates the dockers role structure matching common/deploy.yml contract.
+        The CLI wizard then fills in container-specific content.
+        """
+        self._create_dirs(path, [
+            "roles/dockers/tasks/common",
+            "roles/dockers/tasks/containers",
+            "roles/dockers/files",
+            "roles/dockers/defaults",
+            "roles/dockers/vars",
+            "roles/dockers/templates",
+            "group_vars/all",
+            "host_vars",
+        ])
+
+        self._write_file(path / "ansible.cfg", """[defaults]
+inventory = inventory.yml
+roles_path = roles
+host_key_checking = false
+retry_files_enabled = false
+
+[privilege_escalation]
+become = true
+become_method = sudo
+""")
+
+        self._write_file(path / "inventory.yml", f"""---
+# {config.name} inventory
+all:
+  children:
+    servers:
+      hosts: {{}}
+""")
+
+        self._write_file(path / "playbook.yml", f"""---
+- name: {config.description or 'Deploy Docker containers'}
+  hosts: all
+  gather_facts: true
+
+  roles:
+    - role: dockers
+      become: true
+      tags: dockers
+""")
+
+        self._write_file(path / "roles/dockers/defaults/main.yml", """---
+# dockers role defaults
+""")
+
+        self._write_file(path / "roles/dockers/vars/main.yml", f"""---
+# Container deployment configuration
+dockers_path: /opt/docker
+dockers_lan_name: "{config.name}-networks"
+dockers_domain_name: "example.com"
+dockers_admin_email: "admin@example.com"
+
+# Container list — add entries as you scaffold containers
+dockers_containers: []
+""")
+
+        # Shared deploy logic matching the production contract
+        self._write_file(path / "roles/dockers/tasks/common/deploy.yml", """---
+# Shared container deploy logic. Called via import_tasks from each
+# containers/<name>.yml.
+#
+# Required vars:
+#   container_name           (str)  — directory name under files/
+#
+# Optional vars:
+#   container_has_env        (bool) — template .env file (default: false)
+#   container_extra_dirs     (list of str)  — additional directories
+#   container_extra_files    (list of {src, dest, mode}) — static files
+#   container_extra_templates (list of {src, dest, mode}) — Jinja templates
+
+- name: "{{ container_name }} | Create container directory"
+  ansible.builtin.file:
+    path: "{{ dockers_path }}/{{ container_name }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0775'
+
+- name: "{{ container_name }} | Create extra directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0775'
+  loop: "{{ container_extra_dirs | default([]) }}"
+
+- name: "{{ container_name }} | Template .env"
+  ansible.builtin.template:
+    src: "./files/{{ container_name }}/.env.j2"
+    dest: "{{ dockers_path }}/{{ container_name }}/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  when: container_has_env | default(false)
+  no_log: true
+
+- name: "{{ container_name }} | Template compose.yml"
+  ansible.builtin.template:
+    src: "./files/{{ container_name }}/compose.j2"
+    dest: "{{ dockers_path }}/{{ container_name }}/compose.yml"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: '0664'
+
+- name: "{{ container_name }} | Copy extra files"
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: "{{ item.mode | default('0660') }}"
+  loop: "{{ container_extra_files | default([]) }}"
+  no_log: true
+
+- name: "{{ container_name }} | Template extra template files"
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ ansible_user }}"
+    group: root
+    mode: "{{ item.mode | default('0664') }}"
+  loop: "{{ container_extra_templates | default([]) }}"
+  no_log: true
+
+- name: "{{ container_name }} | Start container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ dockers_path }}/{{ container_name }}/"
+  when: not ansible_check_mode
+""")
+
+        # Shared GitHub clone logic
+        self._write_file(path / "roles/dockers/tasks/common/github.yml", """---
+# Shared GitHub clone logic. Called via import_tasks from containers
+# that build from a cloned repo.
+#
+# Required vars:
+#   repo_url      (str)  — SSH URL
+#   repo_dest     (str)  — absolute path on target
+#
+# Optional vars:
+#   repo_version  (str)  — branch/tag/commit (default: main)
+
+- name: "{{ container_name }} | Ensure git is installed"
+  ansible.builtin.package:
+    name: git
+    state: present
+
+- name: "{{ container_name }} | Ensure destination parent exists"
+  ansible.builtin.file:
+    path: "{{ repo_dest | dirname }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: "{{ container_name }} | Clone/update repository"
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dest }}"
+    version: "{{ repo_version | default('main') }}"
+    update: true
+    accept_hostkey: true
+  become: true
+  become_user: "{{ ansible_user }}"
+
+- name: "{{ container_name }} | Set ownership on cloned directory"
+  ansible.builtin.file:
+    path: "{{ repo_dest }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+    recurse: true
+""")
+
+        # Setup task
+        self._write_file(path / "roles/dockers/tasks/setup.yml", """---
+- name: Ensure Docker service is running
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+""")
+
+        # Main task dispatcher
+        self._write_file(path / "roles/dockers/tasks/main.yml", """---
+# Common setup always runs regardless of tags.
+- import_tasks: setup.yml
+  tags: always
+
+# Add container imports here as you scaffold them:
+# - import_tasks: containers/my-app.yml
+#   tags: my-app
+""")
+
+        self._write_file(path / "requirements.yml", """---
+collections:
+  - name: community.general
+  - name: community.docker
+""")
+
+        self._write_file(path / ".gitignore", """*.retry
+*.pyc
+__pycache__/
+.vagrant/
+*.log
+.env
+vault_password
+""")
+
+        readme = self._readme(
+            config,
+            install_steps="```bash\nansible-galaxy install -r requirements.yml\n```",
+            dev_steps="""```bash
+# Lint
+ansible-lint playbook.yml
+
+# Deploy all containers
+ansible-playbook playbook.yml -i inventory.yml
+
+# Deploy a single container by tag
+ansible-playbook playbook.yml -i inventory.yml --tags my-app
+
+# Scaffold a new container (if wizard is available)
+uv run python main.py
+```""",
+        )
+        self._write_file(path / "README.md", readme)
+        self._write_file(path / "CLAUDE.md", self._ansible_claude_md(config))
+        self._write_file(path / "LICENSE", self._license_mit(config))
+        self._git_init(path, config)
+
+    # =====================================================================
+    # Web: React + Vite (CLI-delegated)
+    # =====================================================================
+
+    def _create_react(self, path: Path, config: ProjectConfig) -> None:
+        """Create a React project via Vite CLI, then add opinions."""
+        config.language = Language.TYPESCRIPT
+        # Remove the directory we created — Vite wants to create it
+        path.rmdir()
+
+        try:
+            subprocess.run(  # noqa: S603, S607
+                ["npm", "create", "vite@latest", config.name, "--",
+                 "--template", "react-ts"],
+                cwd=self.base_path,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fall back: recreate directory and write minimal structure
+            path.mkdir(parents=True)
+            self._write_file(path / "README.md", f"# {config.name}\n\nRun: `npm create vite@latest {config.name} -- --template react-ts`\n")
+            self._web_common_files(path, config)
+            return
+
+        self._web_common_files(path, config)
+
+    # =====================================================================
+    # Web: Astro (CLI-delegated)
+    # =====================================================================
+
+    def _create_astro(self, path: Path, config: ProjectConfig) -> None:
+        """Create an Astro project via CLI."""
+        config.language = Language.TYPESCRIPT
+        path.rmdir()
+
+        try:
+            subprocess.run(  # noqa: S603, S607
+                ["npm", "create", "astro@latest", config.name, "--",
+                 "--template", "basics", "--no-install", "--no-git", "-y"],
+                cwd=self.base_path,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            path.mkdir(parents=True)
+            self._write_file(path / "README.md", f"# {config.name}\n\nRun: `npm create astro@latest`\n")
+
+        self._web_common_files(path, config)
+
+    # =====================================================================
+    # Web: Hono (CLI-delegated)
+    # =====================================================================
+
+    def _create_hono(self, path: Path, config: ProjectConfig) -> None:
+        """Create a Hono project via CLI."""
+        config.language = Language.TYPESCRIPT
+        path.rmdir()
+
+        try:
+            subprocess.run(  # noqa: S603, S607
+                ["npm", "create", "hono@latest", config.name],
+                cwd=self.base_path,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            path.mkdir(parents=True)
+            self._write_file(path / "README.md", f"# {config.name}\n\nRun: `npm create hono@latest`\n")
+
+        self._web_common_files(path, config)
+
+    # =====================================================================
+    # Web: T3 Stack (CLI-delegated)
+    # =====================================================================
+
+    def _create_t3(self, path: Path, config: ProjectConfig) -> None:
+        """Create a T3 Stack project via CLI."""
+        config.language = Language.TYPESCRIPT
+        path.rmdir()
+
+        try:
+            subprocess.run(  # noqa: S603, S607
+                ["npx", "create-t3-app@latest", config.name, "--noGit", "-y"],
+                cwd=self.base_path,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            path.mkdir(parents=True)
+            self._write_file(path / "README.md", f"# {config.name}\n\nRun: `npx create-t3-app@latest`\n")
+
+        self._web_common_files(path, config)
 
 
-def main():
-    """Main entry point for CLI usage."""
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Simple CLI for direct scaffold.py usage."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Create a new project with IDE-grade configuration",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s html my-site --tailwind
-  %(prog)s react my-app --typescript --tailwind
-  %(prog)s nextjs my-app --database postgresql --orm prisma
-  %(prog)s fastapi my-api --database postgresql --orm sqlalchemy
-  %(prog)s python my-lib --pytest --ruff
-        """
-    )
-    parser.add_argument("type", help="Project type (html, react, nextjs, vue, fastapi, django, etc.)")
+    parser = argparse.ArgumentParser(description="Project Scaffolder")
     parser.add_argument("name", help="Project name")
-    parser.add_argument("--description", help="Project description")
-    parser.add_argument("--author", help="Author name")
-    parser.add_argument("--license", default="MIT", help="License type")
-    parser.add_argument("--version", default="0.1.0", help="Initial version")
-
-    # Language options
-    parser.add_argument("--typescript", action="store_true", help="Use TypeScript")
-    parser.add_argument("--javascript", action="store_true", help="Use JavaScript")
-
-    # Framework options
-    parser.add_argument("--tailwind", action="store_true", help="Include Tailwind CSS")
-    parser.add_argument("--database", choices=["sqlite", "postgresql", "mysql", "mongodb"], help="Database type")
-    parser.add_argument("--orm", choices=["prisma", "drizzle", "typeorm", "sqlalchemy", "sqlmodel"], help="ORM/ODM")
-
-    # Tooling
-    parser.add_argument("--eslint", action="store_true", default=True, help="Include ESLint")
-    parser.add_argument("--prettier", action="store_true", default=True, help="Include Prettier")
-    parser.add_argument("--testing", action="store_true", default=True, help="Include testing setup")
-    parser.add_argument("--docker", action="store_true", help="Include Docker configuration")
-    parser.add_argument("--github-actions", action="store_true", help="Include GitHub Actions CI")
-
-    # Python-specific
-    parser.add_argument("--ruff", action="store_true", default=True, help="Include Ruff (Python)")
-    parser.add_argument("--mypy", action="store_true", default=True, help="Include mypy (Python)")
-    parser.add_argument("--pytest", action="store_true", default=True, help="Include pytest (Python)")
-
-    # Additional features (comma-separated)
-    parser.add_argument("--features", help="Additional features (comma-separated)")
+    parser.add_argument(
+        "--type", "-t",
+        required=True,
+        choices=[
+            "html",
+            "fastapi", "flask", "python-cli", "python-lib", "python-data",
+            "go-gin", "go-chi", "go-cli", "go-module",
+            "ansible", "ansible-role", "ansible-docker-container",
+            "react", "astro", "hono", "t3",
+        ],
+        help="Project type",
+    )
+    parser.add_argument("--description", "-d", default="", help="Project description")
+    parser.add_argument("--author", "-a", default="", help="Author name")
+    parser.add_argument("--python-version", default="3.13", help="Python version (default: 3.13)")
+    parser.add_argument("--go-version", default="1.24", help="Go version (default: 1.24)")
+    parser.add_argument("--docker", action="store_true", help="Include Docker files")
+    parser.add_argument("--database", choices=["none", "sqlite", "postgresql", "mysql"],
+                        default="none", help="Database")
 
     args = parser.parse_args()
 
-    # Determine language
-    language = Language.TYPESCRIPT if args.typescript else Language.JAVASCRIPT
-    if args.type in ["python", "fastapi", "django", "flask"]:
-        language = Language.PYTHON
-
-    # Parse features
-    features = args.features.split(",") if args.features else []
-
-    # Create config
     config = ProjectConfig(
         name=args.name,
         project_type=args.type,
-        language=language,
-        description=args.description or "",
-        author=args.author or "",
-        license=args.license,
-        version=args.version,
-        css_framework=CSSFramework.TAILWIND if args.tailwind else CSSFramework.NONE,
-        database=Database(args.database) if args.database else Database.NONE,
-        orm=ORM(args.orm) if args.orm else ORM.NONE,
-        eslint=args.eslint,
-        prettier=args.prettier,
-        testing=args.testing,
+        description=args.description,
+        author=args.author,
+        python_version=args.python_version,
+        go_version=args.go_version,
         docker=args.docker,
-        github_actions=args.github_actions,
-        ruff=args.ruff,
-        mypy=args.mypy,
-        pytest=args.pytest,
-        features=features,
+        database=Database(args.database),
     )
 
     scaffolder = ProjectScaffolder()
-    try:
-        project_path = scaffolder.create_project(config)
-        print(f"✅ Created {args.type} project '{args.name}' at {project_path}")
-        print(f"\nNext steps:")
-        print(f"  cd {args.name}")
-        if language == Language.PYTHON:
-            print(f"  python -m venv .venv && source .venv/bin/activate")
-            print(f"  pip install -r requirements.txt")
-        else:
-            print(f"  npm install")
-            print(f"  npm run dev")
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        sys.exit(1)
+    project_path = scaffolder.create_project(config)
+    print(f"Created {config.project_type} project at {project_path}")
 
 
 if __name__ == "__main__":
